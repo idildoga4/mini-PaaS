@@ -1,0 +1,17 @@
+http:
+  routers:
+    # 1. KURAL: Router tanımlıyoruz
+    manual-router:
+      rule: "PathPrefix(`/`)"  # Gelen her isteği kabul et
+      service: "manual-service" # Trafiği bu servise gönder
+      entryPoints:
+        - "web"
+
+  services:
+    # 2. HEDEF: Servisin adresini elle veriyoruz
+    manual-service:
+      loadBalancer:
+        servers:
+          # Docker Compose'daki servis ismini (paas_api) kullanıyoruz
+          # Docker kendi içinde isimden IP çözer.
+          - url: "http://paas_api:80"

@@ -1,0 +1,74 @@
+version: '3.8'
+
+services:
+  # --- 1. TRAFIK POLİSİ (Traefik) ---
+  traefik:
+    image: traefik:v2.10
+    container_name: traefik_proxy
+    networks:
+      - paas-net
+    command:
+      # -- Temel Ayarlar --
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      # -- Dosya Okuma Modu (Manuel Router için) --
+      - "--providers.file.filename=/etc/traefik/dynamic.yml"
+      # -- İZLEME (METRİKLER) --
+      - "--metrics.prometheus=true"
+      - "--metrics.prometheus.addEntryPointsLabels=true"
+      - "--metrics.prometheus.addRoutersLabels=true"
+      # -- Log Seviyesi (Hata ayıklamak için) --
+      - "--log.level=INFO"
+    ports:
+      - "8090:80"   # Site Girişi
+      - "8080:8080" # Panel ve Metrikler
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik_dynamic.yml:/etc/traefik/dynamic.yml
+
+  # --- 2. API SERVİSİ ---
+  api-gateway:
+    build: ./api-gateway
+    container_name: paas_api
+    networks:
+      - paas-net
+    ports:
+      - "5001:80" # Bypass portu
+
+  # --- 3. BUILDER SERVİSİ ---
+  builder-service:
+    build: ./builder-service
+    container_name: paas_builder
+    networks:
+      - paas-net
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  # --- 4. VERİ TOPLAYICI (Prometheus) ---
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: paas_monitor
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    networks:
+      - paas-net
+    ports:
+      - "9090:9090"
+
+  # --- 5. GRAFİK EKRANI (Grafana) ---
+  grafana:
+    image: grafana/grafana:latest
+    container_name: paas_dashboard
+    networks:
+      - paas-net
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+
+# --- AĞ ---
+networks:
+  paas-net:
+    driver: bridge
