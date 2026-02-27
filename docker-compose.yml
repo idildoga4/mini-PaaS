@@ -71,4 +71,5 @@ services:
 # --- AĞ ---
 networks:
   paas-net:
+    name : paas-net
     driver: bridge
