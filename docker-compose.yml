@@ -41,6 +41,8 @@ services:
   builder-service:
     build: ./builder-service
     container_name: paas_builder
+    ports:
+      - "5000:5000"
     networks:
       - paas-net
     volumes:
