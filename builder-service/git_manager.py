@@ -8,7 +8,6 @@ def on_rm_error(func, path, exc_info):
     func(path)
 
 def clone_repo(repo_url, project_name):
-    # İndirilen projeleri tutacağımız ana depo klasörü
     base_dir = "./workspace"
     
     if not os.path.exists(base_dir):

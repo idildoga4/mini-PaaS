@@ -1,38 +1,56 @@
-from fastapi import FastAPI, BackgroundTasks
+from fastapi import FastAPI, BackgroundTasks, WebSocket 
 from pydantic import BaseModel
-import git_manager
-import docker_manager
-import requests
+from fastapi.middleware.cors import CORSMiddleware
+import asyncio 
+import os
+from git_manager import clone_repo
+from docker_manager import build_and_deploy
 
-app = FastAPI(title="PaaS Builder Service", description="CI/CD Automation Engine")
+app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], 
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 class DeployRequest(BaseModel):
     repo_url: str
     project_name: str
 
 def run_pipeline(repo_url: str, project_name: str):
-    print(f"\n[>>>]For  {project_name} pipeline started [>>>]")
-    
-    project_path = git_manager.clone_repo(repo_url, project_name)
-    if not project_path:
-        print(f"[-] Pipeline stopped: Git Clone is unsucessful.")
-        return
-
-    success = docker_manager.build_and_deploy(project_path, project_name)
-    
-    if success:
-        print(f"[+] Pipeline successful!")
-        # İleride buraya 1. kişinin API'sine başarılı olduğuna dair istek (Webhook) atma kodu eklenecek
-    else:
-        print(f"[-] Pipeline stopped: Docker Build/Run unsucessful.")
+    project_path = clone_repo(repo_url, project_name)
+    if project_path:
+        build_and_deploy(project_path, project_name)
 
 @app.post("/deploy")
-async def trigger_deploy(request: DeployRequest, background_tasks: BackgroundTasks):
-    # DİKKAT: İşlemi arka plana atıyoruz. Çünkü git clone ve docker build 
-    # dakikalar sürebilir. Kullanıcıyı web sitesinde bekletemeyiz.
-    background_tasks.add_task(run_pipeline, request.repo_url, request.project_name)
-   
-    return {
-        "status": "success",
-        "message": f"'{request.project_name}' The project has been added to the queue. The build process has started in the background."
-    }
+async def deploy_project(req: DeployRequest, background_tasks: BackgroundTasks):
+    background_tasks.add_task(run_pipeline, req.repo_url, req.project_name)
+    return {"message": f"Deployment started for {req.project_name}! You can watch the logs via WebSocket."}
+
+
+@app.websocket("/ws/{project_name}")
+async def websocket_endpoint(websocket: WebSocket, project_name: str):
+    await websocket.accept()
+    log_path = f"./workspace/{project_name.lower()}.log"
+ 
+    while not os.path.exists(log_path):
+        await asyncio.sleep(0.5)
+
+    with open(log_path, "r", encoding="utf-8") as f:
+        while True:
+            line = f.readline()
+       
+            if not line:
+                await asyncio.sleep(0.5)
+                continue
+            
+    
+            await websocket.send_text(line.strip())
+          
+            if "SUCCESS!" in line or "error occurred" in line.lower():
+                break
+                
+    await websocket.close()
