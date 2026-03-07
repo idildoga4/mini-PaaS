@@ -35,7 +35,9 @@ services:
     networks:
       - paas-net
     ports:
-      - "5001:80" # Bypass portu
+      - "5001:8000" # Bypass portu
+    volumes:
+      - ./data:/app/data
 
   # --- 3. BUILDER SERVİSİ ---
   builder-service:
@@ -73,5 +75,5 @@ services:
 # --- AĞ ---
 networks:
   paas-net:
-    name : paas-net
+    name: paas-net
     driver: bridge

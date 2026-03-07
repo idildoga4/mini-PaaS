@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+
+    <title>Mini PaaS</title>
+
+    <style>
+
+        body {
+            font-family: Segoe UI;
+            background: #36165d;
+            color: white;
+            margin: 0;
+        }
+
+        .header {
+            background: #493264;
+            padding: 20px 40px;
+            font-size: 22px;
+            font-weight: bold;
+        }
+
+        .container {
+            max-width: 1100px;
+            margin: auto;
+            padding: 40px;
+        }
+
+        .card {
+            background: #493264;
+            padding: 25px;
+            border-radius: 12px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+        }
+
+        .form {
+            display: flex;
+            gap: 10px;
+        }
+
+        input {
+            padding: 12px;
+            border-radius: 6px;
+            border: none;
+            flex: 1;
+        }
+
+        button {
+            padding: 12px 20px;
+            background: #ff00f2;
+            border: none;
+            color: white;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        button:hover {
+            background: #a31697;
+        }
+
+        .table {
+            margin-top: 20px;
+        }
+
+        .row {
+            display: grid;
+            grid-template-columns: 1fr 2fr 1fr 1fr;
+            padding: 14px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            align-items: center;
+        }
+
+        .row.headerRow {
+            font-weight: bold;
+            opacity: 0.7;
+        }
+
+        .status {
+            padding: 5px 10px;
+            border-radius: 6px;
+            text-align: center;
+            width: 90px;
+        }
+
+        .pending {
+            background: #f59e0b;
+        }
+
+        .running {
+            background: #00ff88;
+            color: black;
+        }
+
+        .port a {
+            color: #00ffff;
+            text-decoration: none;
+        }
+
+        .port a:hover {
+            text-decoration: underline;
+        }
+
+    </style>
+
+</head>
+
+<body>
+
+    <div class="header">
+        Mini PaaS Dashboard
+    </div>
+
+    <div class="container">
+
+        <div class="card">
+
+            <h3>Deploy New Project</h3>
+
+            <div class="form">
+
+                <input id="project" placeholder="Project name">
+
+                <input id="github" placeholder="Github repository URL">
+
+                <button onclick="deploy()">Deploy</button>
+
+            </div>
+
+        </div>
+
+        <div class="card">
+
+            <h3>Deployments</h3>
+
+            <div class="table">
+
+                <div class="row headerRow">
+                    <div>ID</div>
+                    <div>Project</div>
+                    <div>Status</div>
+                    <div>Port</div>
+                </div>
+
+                <div id="deployments"></div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+<script>
+
+    let deployments = []
+
+    async function deploy() {
+
+        const project = document.getElementById("project").value
+        const github = document.getElementById("github").value
+
+        const res = await fetch("/api/deploy", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                project_name: project,
+                github_url: github
+            })
+        })
+
+        const data = await res.json()
+
+        deployments.push({
+            id: data.deploy_id,
+            project: project,
+            status: "Pending",
+            port: null
+        })
+
+        render()
+
+        poll(data.deploy_id)
+
+        document.getElementById("project").value = ""
+        document.getElementById("github").value = ""
+
+    }
+
+    async function poll(id) {
+
+        const res = await fetch("/api/status/" + id)
+        const data = await res.json()
+
+        let deploy = deployments.find(d => d.id === id)
+
+        if (deploy) {
+            deploy.status = data.status
+            deploy.port = data.port
+        }
+
+        render()
+
+        setTimeout(() => poll(id), 2000)
+
+    }
+
+    function render() {
+
+        const container = document.getElementById("deployments")
+
+        container.innerHTML = ""
+
+        deployments.forEach(d => {
+
+            container.innerHTML += `
+                <div class="row">
+
+                    <div>${d.id}</div>
+
+                    <div>${d.project}</div>
+
+                    <div>
+                        <div class="status ${d.status.toLowerCase()}">
+                            ${d.status}
+                        </div>
+                    </div>
+
+                    <div class="port">
+                        ${ d.port ? `<a href="http://localhost:${d.port}" target="_blank">Open</a>` : "-"}
+                    </div>
+
+                </div>
+            `
+        })
+
+    }
+
+</script>
+
+</body>
+</html>

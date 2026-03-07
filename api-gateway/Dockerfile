@@ -2,11 +2,11 @@ FROM python:3.9-slim
 
 WORKDIR /app
 
-# Flask kütüphanesini kuruyoruz
-RUN pip install flask requests
+COPY requirements.txt .
 
-# main.py dosyasını içeri atıyoruz
-COPY main.py .
+RUN pip install --upgrade pip
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Uygulamayı başlatıyoruz
-CMD ["python", "main.py"]
+COPY . .
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
