@@ -175,10 +175,11 @@
         const data = await res.json()
 
         deployments.push({
-            id: data.deploy_id,
-            project: project,
-            status: "Pending",
-            port: null
+            id:       data.deploy_id,
+            project:  project,
+            status:   "Pending",
+            port:     null,
+            subdomain: null
         })
 
         render()
@@ -198,8 +199,9 @@
         let deploy = deployments.find(d => d.id === id)
 
         if (deploy) {
-            deploy.status = data.status
-            deploy.port = data.port
+            deploy.status    = data.status
+            deploy.port      = data.port
+            deploy.subdomain = data.subdomain  // "test.localhost"
         }
 
         render()
@@ -230,7 +232,10 @@
                     </div>
 
                     <div class="port">
-                        ${ d.port ? `<a href="http://localhost:${d.port}" target="_blank">Open</a>` : "-"}
+                        ${ d.subdomain
+                            ? `<a href="http://${d.subdomain}:8090" target="_blank">🔗 Aç</a>`
+                            : d.status === "Running" ? "Hazırlanıyor..." : "-"
+                        }
                     </div>
 
                 </div>

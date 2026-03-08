@@ -27,21 +27,43 @@ class DeployRequest(BaseModel):
 
 class WebhookRequest(BaseModel):
     deploy_id: int
-    status: str
-    port: int
+    status:    str
+    port:      int
+    subdomain: str = ""   # "test.localhost" — opsiyonel, eski builder'larla uyumlu
 
-def trigger_builder_service(deploy_id: int, github_url: str):
+def trigger_builder_service(deploy_id: int, github_url: str, project_name: str):
+    """
+    Builder Service'e iş talebi gönderir.
+
+    Builder'ın beklediği 3 alan:
+      - deploy_id    : Bu deploy'un veritabanındaki ID'si (geri bildirim için)
+      - repo_url     : Klonlanacak GitHub adresi
+      - project_name : Docker image ve container için kullanılacak isim
+
+    Hata olursa veritabanındaki kaydı "Failed" olarak güncelle,
+    sessizce geçme — böylece dashboard'da kullanıcı durumu görebilir.
+    """
     try:
-        requests.post(
+        response = requests.post(
             "http://builder-service:5000/deploy",
             json={
-                "deploy_id": deploy_id,
-                "github_url": github_url
+                "deploy_id":    deploy_id,
+                "repo_url":     github_url,    # Builder "repo_url" istiyor
+                "project_name": project_name   # Image ve container ismi için şart
             },
-            timeout=5
+            timeout=10  # Build başlatmak biraz zaman alabilir
         )
-    except:
-        print("Builder servisine ulaşılamadı")
+        print(f"[API Gateway] Builder'a istek gönderildi. Yanıt: {response.status_code}")
+    except Exception as e:
+        # Builder'a ulaşılamazsa bunu veritabanına yaz
+        print(f"[API Gateway] HATA - Builder servisine ulaşılamadı: {e}")
+        conn = get_connection()
+        conn.execute(
+            "UPDATE deployments SET status='Failed' WHERE id=?",
+            (deploy_id,)
+        )
+        conn.commit()
+        conn.close()
 
 @app.post("/api/deploy")
 async def deploy(req: DeployRequest, background_tasks: BackgroundTasks):
@@ -62,7 +84,7 @@ async def deploy(req: DeployRequest, background_tasks: BackgroundTasks):
     conn.commit()
     conn.close()
 
-    background_tasks.add_task(trigger_builder_service, deploy_id, req.github_url)
+    background_tasks.add_task(trigger_builder_service, deploy_id, req.github_url, req.project_name)
 
     return {"deploy_id": deploy_id, "message": "Deployment başlatıldı"}
 
@@ -73,11 +95,11 @@ async def webhook(req: WebhookRequest):
 
     result = cursor.execute("""
         UPDATE deployments
-        SET status=?, port=?
+        SET status=?, port=?, subdomain=?
         WHERE id=?
-    """, (req.status, req.port, req.deploy_id))
+    """, (req.status, req.port, req.subdomain, req.deploy_id))
 
-    print("UPDATED ROWS:", cursor.rowcount)
+    print(f"[api] Deployment güncellendi → ID:{req.deploy_id} | {req.status} | {req.subdomain}")
 
     conn.commit()
     conn.close()

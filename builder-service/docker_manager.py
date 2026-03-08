@@ -1,102 +1,134 @@
 import subprocess
 import os
+import yaml
+import threading
 
-def build_and_deploy(project_path, project_name):
+# traefik_dynamic.yml'e aynı anda iki build yazmasın diye kilit
+_traefik_lock = threading.Lock()
 
-    image_name = f"{project_name.lower()}-img"
+DYNAMIC_YML = "/etc/traefik/dynamic.yml"
+
+
+def update_traefik(router_name: str, container_name: str):
+    """
+    Deploy edilen uygulamayı Traefik'e kayıt eder.
+
+    NEDEN BUNU YAPIYORUZ?
+    Docker provider (--providers.docker) Windows'ta sorunlu olduğu için
+    kapattık. Bunun yerine traefik_dynamic.yml dosyasını elle güncelliyoruz.
+    Traefik --providers.file.watch=true ile bu dosyayı izliyor,
+    değişince otomatik yeniliyor — restart gerekmez.
+
+    Sonuç: http://demo-app.localhost:8090 → app-demo-app container'ı
+    """
+    with _traefik_lock:  # iki build aynı anda dosyayı bozmasın
+        try:
+            with open(DYNAMIC_YML, "r") as f:
+                config = yaml.safe_load(f) or {}
+        except Exception:
+            config = {}
+
+        # Temel yapı yoksa oluştur
+        config.setdefault("http", {})
+        config["http"].setdefault("routers", {})
+        config["http"].setdefault("services", {})
+
+        # Yeni router: hangi subdomain'den gelirse bu servise git
+        config["http"]["routers"][router_name] = {
+            "rule":        f"Host(`{router_name}.localhost`)",
+            "service":     router_name,
+            "entryPoints": ["web"]
+        }
+
+        # Yeni service: o subdomain'i bu container'a yönlendir
+        # container_name = "app-demo-app" — Docker iç ağında (paas-net) erişilebilir
+        config["http"]["services"][router_name] = {
+            "loadBalancer": {
+                "servers": [{"url": f"http://{container_name}:80"}]
+            }
+        }
+
+        with open(DYNAMIC_YML, "w") as f:
+            yaml.dump(config, f, default_flow_style=False)
+
+        print(f"[traefik] ✅ Routing eklendi: {router_name}.localhost → {container_name}")
+
+
+def build_and_deploy(project_path: str, project_name: str) -> bool:
+    """
+    3 adımda deploy:
+      1. docker build  → klonlanan repodan image üret
+      2. docker run    → container'ı paas-net ağında başlat
+      3. traefik güncelle → subdomain yönlendirmesini ekle
+    """
+    image_name     = f"{project_name.lower()}-img"
     container_name = f"app-{project_name.lower()}"
-    network_name = "paas-net"
-
-    router_name = project_name.lower().replace("_", "-")
-
-    log_path = f"./workspace/{project_name.lower()}.log"
+    router_name    = project_name.lower().replace("_", "-").replace(" ", "-")
+    log_path       = f"./workspace/{project_name.lower()}.log"
 
     os.makedirs("./workspace", exist_ok=True)
 
     with open(log_path, "a", encoding="utf-8") as log_file:
 
-        log_file.write(f"\n[*] Process started for '{project_name}'...\n")
-        log_file.flush()
+        def log(msg):
+            print(msg, flush=True)
+            log_file.write(msg + "\n")
+            log_file.flush()
+
+        log(f"\n[*] '{project_name}' için build başlatıldı...")
 
         try:
-
-            # Build docker image
+            # ── 1. Docker image build ─────────────────────────────
+            log(f"[*] Image build ediliyor: {image_name}")
             subprocess.run(
-                [
-                    "docker",
-                    "build",
-                    "--progress=plain",
-                    "-t",
-                    image_name,
-                    project_path
-                ],
+                ["docker", "build", "--progress=plain", "-t", image_name, project_path],
                 check=True,
                 stdout=log_file,
                 stderr=subprocess.STDOUT
             )
+            log(f"[+] Image başarıyla oluşturuldu: {image_name}")
 
-            log_file.write(f"[+] Image successfully built: {image_name}\n")
-            log_file.flush()
-
-            # Remove old container
+            # ── 2. Eski container varsa sil, yenisini başlat ──────
             subprocess.run(
                 ["docker", "rm", "-f", container_name],
-                stderr=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
             )
 
-            log_file.write("[*] Starting container with Traefik...\n")
-            log_file.flush()
-
+            log(f"[*] Container başlatılıyor: {container_name}")
             subprocess.run(
                 [
-                    "docker",
-                    "run",
-                    "-d",
-                    "--name",
-                    container_name,
-                    "--network",
-                    network_name,
-
-                    "-l",
-                    "traefik.enable=true",
-
-                    "-l",
-                    f"traefik.http.routers.{router_name}.rule=Host(`{router_name}.localhost`)",
-
-                    "-l",
-                    f"traefik.http.services.{router_name}.loadbalancer.server.port=80",
-
+                    "docker", "run", "-d",
+                    "--name",    container_name,
+                    "--network", "paas-net",
+                    # NOT: -l (label) etiketleri artık işe yaramıyor çünkü
+                    # Docker provider kapalı. Traefik routing'i update_traefik()
+                    # fonksiyonu ile traefik_dynamic.yml üzerinden yapıyoruz.
                     image_name
                 ],
                 check=True,
                 stdout=log_file,
                 stderr=subprocess.STDOUT
             )
+            log(f"[+] Container başlatıldı: {container_name}")
 
-            log_file.write(
-                f"[+] SUCCESS! Your application is live at:\n"
-                f"    http://{router_name}.localhost:8090\n"
-            )
+            # ── 3. Traefik'e subdomain kaydını ekle ───────────────
+            update_traefik(router_name, container_name)
 
-            log_file.write("[SUCCESS!]\n")
-
+            log(f"[+] SUCCESS! Uygulama yayında:")
+            log(f"    http://{router_name}.localhost:8090")
+            log("[SUCCESS!]")
             return True
 
         except subprocess.CalledProcessError as e:
-
-            log_file.write(
-                f"[-] An error occurred during the Docker process:\n{e}\n"
-            )
-
-            log_file.write("[error occurred]\n")
-
+            log(f"[-] Docker hatası: {e}")
+            log("[error occurred]")
+            return False
+        except Exception as e:
+            log(f"[-] Beklenmeyen hata: {e}")
+            log("[error occurred]")
             return False
 
 
 if __name__ == "__main__":
-
-    test_path = "./workspace/sample-app"
-    test_name = "sample-app"
-
-    build_and_deploy(test_path, test_name)
+    build_and_deploy("./workspace/sample-app", "sample-app")

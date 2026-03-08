@@ -14,9 +14,15 @@ def init_db():
             github_url TEXT NOT NULL,
             status TEXT NOT NULL,
             port INTEGER,
+            subdomain TEXT,
             created_at TEXT NOT NULL
         )
     """)
+    # Eski veritabanında subdomain sütunu yoksa ekle
+    try:
+        cursor.execute("ALTER TABLE deployments ADD COLUMN subdomain TEXT")
+    except Exception:
+        pass  # Sütun zaten varsa hata vermeden geç
 
     conn.commit()
     conn.close()

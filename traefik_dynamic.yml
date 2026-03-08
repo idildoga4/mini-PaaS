@@ -1,17 +1,31 @@
 http:
   routers:
-    # 1. KURAL: Router tanımlıyoruz
-    manual-router:
-      rule: "PathPrefix(`/`)"  # Gelen her isteği kabul et
-      service: "manual-service" # Trafiği bu servise gönder
+    dashboard-router:
       entryPoints:
-        - "web"
-
+      - web
+      priority: 1
+      rule: Host(`localhost`)
+      service: dashboard-service
+    demo-app:
+      entryPoints:
+      - web
+      rule: Host(`demo-app.localhost`)
+      service: demo-app
+    test:
+      entryPoints:
+      - web
+      rule: Host(`test.localhost`)
+      service: test
   services:
-    # 2. HEDEF: Servisin adresini elle veriyoruz
-    manual-service:
+    dashboard-service:
       loadBalancer:
         servers:
-          # Docker Compose'daki servis ismini (paas_api) kullanıyoruz
-          # Docker kendi içinde isimden IP çözer.
-          - url: "http://paas_api:80"
+        - url: http://paas_api:8000
+    demo-app:
+      loadBalancer:
+        servers:
+        - url: http://app-demo-app:80
+    test:
+      loadBalancer:
+        servers:
+        - url: http://app-test:80

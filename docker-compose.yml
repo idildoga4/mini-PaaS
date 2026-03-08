@@ -8,19 +8,28 @@ services:
     networks:
       - paas-net
     command:
-      # -- Temel Ayarlar --
+      # --- Temel Ayarlar ---
       - "--api.insecure=true"
-      - "--providers.docker=true"
-      - "--providers.docker.exposedbydefault=false"
       - "--entrypoints.web.address=:80"
-      # -- Dosya Okuma Modu (Manuel Router için) --
+
+      # --- Yönlendirme: SADECE dosya modu ---
+      # Docker provider KAPALI — Windows/Docker Desktop'ta socket hatası üretiyor.
+      # Tüm routing traefik_dynamic.yml üzerinden yönetiliyor:
+      #   - localhost → API Gateway (dashboard)
+      #   - demo-app.localhost → app-demo-app container'ı  (builder ekler)
+      #   - test.localhost → app-test container'ı          (builder ekler)
+      - "--providers.docker=false"
       - "--providers.file.filename=/etc/traefik/dynamic.yml"
-      # -- İZLEME (METRİKLER) --
+      - "--providers.file.watch=true"
+
+      # --- İzleme (Prometheus metrikleri) ---
       - "--metrics.prometheus=true"
       - "--metrics.prometheus.addEntryPointsLabels=true"
       - "--metrics.prometheus.addRoutersLabels=true"
-      # -- Log Seviyesi (Hata ayıklamak için) --
-      - "--log.level=INFO"
+
+      # --- Log seviyesi ---
+      # ERROR: sadece gerçek hatalar görünsün, log ekranı kirlenmesin
+      - "--log.level=ERROR"
     ports:
       - "8090:80"   # Site Girişi
       - "8080:8080" # Panel ve Metrikler
@@ -49,6 +58,14 @@ services:
       - paas-net
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      # traefik_dynamic.yml builder tarafından güncelleniyor
+      # Traefik ve Builder aynı dosyayı paylaşıyor
+      - ./traefik_dynamic.yml:/etc/traefik/dynamic.yml
+    environment:
+      # GitHub Personal Access Token — private repo'ları klonlamak için
+      # Token almak: GitHub → Settings → Developer settings → Personal access tokens
+      # Buraya kendi token'ınızı yazın, ASLA GitHub'a push etmeyin!
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
 
   # --- 4. VERİ TOPLAYICI (Prometheus) ---
   prometheus:
