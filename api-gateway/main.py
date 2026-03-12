@@ -1,3 +1,4 @@
+import httpx
 from fastapi import FastAPI, BackgroundTasks, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -11,6 +12,7 @@ import requests as http_requests
 from typing import Optional
 
 from database import init_db, get_connection
+
 
 # ─── Config ────────────────────────────────────────────────────────────────────
 SECRET_KEY         = os.getenv("JWT_SECRET", "mini-paas-secret-2025-xK9")
@@ -28,6 +30,39 @@ SMTP_FROM = os.getenv("SMTP_FROM", "noreply@minipaas.local")
 bearer = HTTPBearer()
 
 app = FastAPI(title="Mini PaaS API Gateway")
+GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID")
+GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET")
+
+@app.get("/api/github/login")
+async def github_login():
+    # scope=repo çok önemli: private repoları okuma izni ister
+    url = f"https://github.com/login/oauth/authorize?client_id={GITHUB_CLIENT_ID}&scope=repo"
+    return {"redirect_url": url}
+
+# 2. GitHub'ın kullanıcıya onaylatıp geri gönderdiği rota
+@app.get("/api/github/callback")
+async def github_callback(code: str, email: str):
+    # Dönen kodu arka planda Client Secret ile token'a çeviriyoruz
+    async with httpx.AsyncClient() as client:
+        res = await client.post(
+            "https://github.com/login/oauth/access_token",
+            headers={"Accept": "application/json"},
+            data={
+                "client_id": GITHUB_CLIENT_ID,
+                "client_secret": GITHUB_CLIENT_SECRET,
+                "code": code
+            }
+        )
+        token_data = res.json()
+        user_github_token = token_data.get("access_token")
+
+    # Alınan token'ı veritabanında o kullanıcının satırına kaydet
+    conn = get_connection()
+    conn.execute("UPDATE users SET github_token=? WHERE email=?", (user_github_token, email))
+    conn.commit()
+    conn.close()
+
+    return {"message": "GitHub hesabınız başarıyla bağlandı"}
 os.makedirs("data", exist_ok=True)
 init_db()
 
@@ -161,27 +196,29 @@ async def register(req: RegisterRequest):
         raise HTTPException(status_code=400, detail=pw_err)
 
     conn = get_connection()
-    # Aktif kullanıcı mı?
+    # Kullanıcı zaten var mı kontrolü
     if conn.execute("SELECT id FROM users WHERE email=?", (email,)).fetchone():
         conn.close()
         raise HTTPException(status_code=409, detail="Bu e-posta zaten kayıtlı")
-    conn.close()
-
+    
+    # 1. DOĞRUDAN KAYIT: Bekleme tablosunu sildik, direkt ana tabloya (users) ekliyoruz!
     hashed = hash_password(req.password)
-    code   = str(secrets.randbelow(900000) + 100000)  # 6 haneli
-    expires = (datetime.utcnow() + timedelta(minutes=CODE_EXPIRE_MINUTES)).isoformat()
-
-    conn = get_connection()
+    now = datetime.utcnow().isoformat()
+    
     conn.execute("""
-        INSERT INTO pending_verifications (email, password, code, expires_at)
-        VALUES (?, ?, ?, ?)
-        ON CONFLICT(email) DO UPDATE SET password=excluded.password, code=excluded.code, expires_at=excluded.expires_at
-    """, (email, hashed, code, expires))
+        INSERT INTO users (email, password, created_at)
+        VALUES (?, ?, ?)
+    """, (email, hashed, now))
     conn.commit()
     conn.close()
 
-    send_verification_email(email, code)
-    return {"message": "Doğrulama kodu gönderildi", "email": email}
+    # 2. DOĞRUDAN GİRİŞ: E-posta atmak yerine anında Token üretip arayüze gönderiyoruz.
+    # (Not: Eğer hata verirse, login fonksiyonuna bakıp access_token kısmını oradakiyle aynı yapabilirsin)
+    access_token = create_access_token({"sub": email})
+    
+    token = create_token(email)
+    
+    return {"token": token, "email": email, "message": "Kayıt başarılı"}
 
 @app.post("/api/verify")
 async def verify(req: VerifyRequest):
@@ -259,8 +296,8 @@ async def deploy(req: DeployRequest, bg: BackgroundTasks, email: str = Depends(v
     conn   = get_connection()
     cursor = conn.cursor()
     cursor.execute(
-        "INSERT INTO deployments (project_name, github_url, status, created_at) VALUES (?,?,?,?)",
-        (req.project_name, req.github_url, "Pending", datetime.utcnow().isoformat())
+        "INSERT INTO deployments (user_email, project_name, github_url, status, created_at) VALUES (?,?,?,?,?)",
+        (email, req.project_name, req.github_url, "Pending", datetime.utcnow().isoformat())
     )
     deploy_id = cursor.lastrowid
     conn.commit()
@@ -282,7 +319,9 @@ async def webhook(req: WebhookRequest):
 @app.get("/api/status/{deploy_id}")
 async def status(deploy_id: int, email: str = Depends(verify_token)):
     conn = get_connection()
-    row  = conn.execute("SELECT * FROM deployments WHERE id=?", (deploy_id,)).fetchone()
+    row  = conn.execute(
+        "SELECT * FROM deployments WHERE id=? AND user_email=?", (deploy_id, email)
+    ).fetchone()
     conn.close()
     if not row:
         raise HTTPException(status_code=404, detail="Bulunamadı")
@@ -291,7 +330,9 @@ async def status(deploy_id: int, email: str = Depends(verify_token)):
 @app.get("/api/deployments")
 async def list_deployments(email: str = Depends(verify_token)):
     conn = get_connection()
-    rows = conn.execute("SELECT * FROM deployments ORDER BY id DESC").fetchall()
+    rows = conn.execute(
+        "SELECT * FROM deployments WHERE user_email=? ORDER BY id DESC", (email,)
+    ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 

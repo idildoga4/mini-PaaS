@@ -16,15 +16,30 @@
   --r:10px;--r-lg:14px;
 }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:100vh;-webkit-font-smoothing:antialiased;overflow-x:hidden}
 
-/* PAGES */
-.page{display:none}
-.page.active{display:block;animation:fadeUp .28s ease both}
+/* KEY FIX: html + body fill full viewport, no overflow */
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
+body{font-family:var(--sans);background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased;}
+
+/* PAGES — each page is a full-screen layer */
+.page {
+  display: none;
+  position: fixed;
+  inset: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.page.active {
+  display: block;
+  animation: fadeUp .28s ease both;
+}
 @keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
 
 /* NAVBAR */
-.nav{position:fixed;top:0;left:0;right:0;height:54px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;background:rgba(0,0,0,.75);backdrop-filter:blur(18px);border-bottom:1px solid var(--border);z-index:100}
+.nav{position:sticky;top:0;left:0;right:0;height:54px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;background:rgba(0,0,0,.75);backdrop-filter:blur(18px);border-bottom:1px solid var(--border);z-index:100}
 .nav-logo{display:flex;align-items:center;gap:9px;font-size:14px;font-weight:600;letter-spacing:-.3px;cursor:pointer;user-select:none}
 .logo-mark{width:20px;height:20px;background:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .logo-mark svg{width:10px;height:10px}
@@ -63,7 +78,7 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
 .pw-toggle:hover{color:var(--text-2)}
 
 /* ── HOME ── */
-#page-home{padding-top:54px;min-height:100vh}
+#page-home { }
 .hero{display:flex;flex-direction:column;align-items:center;text-align:center;padding:88px 24px 64px;position:relative;overflow:hidden}
 .hero::before{content:'';position:absolute;top:-80px;left:50%;transform:translateX(-50%);width:640px;height:640px;background:radial-gradient(ellipse,rgba(0,112,243,.13) 0%,rgba(0,112,243,.04) 45%,transparent 70%);pointer-events:none}
 .hero::after{content:'';position:absolute;inset:0;background-image:linear-gradient(var(--border) 1px,transparent 1px),linear-gradient(90deg,var(--border) 1px,transparent 1px);background-size:44px 44px;mask-image:radial-gradient(ellipse 55% 55% at 50% 0%,black,transparent 80%);pointer-events:none}
@@ -86,8 +101,18 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
 .st-l{font-size:12px;color:var(--text-3)}
 
 /* ── AUTH ── */
-#page-auth{padding-top:54px;min-height:100vh;display:flex;align-items:center;justify-content:center;padding-bottom:32px}
-.auth-wrap{width:100%;max-width:380px;padding:20px}
+/* auth page centers its content */
+#page-auth {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding-bottom: 32px;
+}
+#page-auth.active {
+  display: flex;
+  flex-direction: column;
+}
+.auth-wrap{width:100%;max-width:380px;padding:20px;margin-top:54px}
 .auth-card{background:var(--bg-1);border:1px solid var(--border-md);border-radius:var(--r-lg);padding:28px;box-shadow:0 0 0 1px rgba(255,255,255,.04),0 20px 60px rgba(0,0,0,.8)}
 .auth-hd{text-align:center;margin-bottom:24px}
 .auth-logo-wrap{width:38px;height:38px;background:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 14px}
@@ -119,7 +144,7 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
 .verify-meta strong{color:var(--text-2)}
 
 /* ── DASHBOARD ── */
-#page-dashboard{padding-top:54px;min-height:100vh}
+#page-dashboard { }
 .dash{max-width:1080px;margin:0 auto;padding:28px 22px}
 .dash-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:28px;flex-wrap:wrap;gap:14px}
 .dash-heading{font-size:21px;font-weight:600;letter-spacing:-.5px;margin-bottom:2px}
@@ -158,6 +183,8 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
 .empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:52px 20px;gap:10px}
 .empty-ic{width:40px;height:40px;border:1px solid var(--border-md);border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:18px;background:var(--bg-2);margin-bottom:2px}
 .empty-t{font-size:13px;font-weight:500}.empty-s{font-size:12px;color:var(--text-3);text-align:center;max-width:240px;line-height:1.55}
+
+/* LOG DRAWER */
 .drawer{display:none;position:fixed;bottom:0;left:0;right:0;height:280px;background:var(--bg-1);border-top:1px solid var(--border-md);box-shadow:0 -6px 30px rgba(0,0,0,.6);z-index:200;flex-direction:column}
 .drawer.open{display:flex;animation:slideUp .2s ease both}
 @keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
@@ -165,12 +192,23 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
 .drawer-title{font-size:11.5px;font-weight:500;font-family:var(--mono);color:var(--text-2);display:flex;align-items:center;gap:7px}
 .drawer-body{flex:1;overflow-y:auto;padding:12px 16px;font-family:var(--mono);font-size:11.5px;line-height:1.9;color:#666}
 .ll.ok{color:var(--green)}.ll.er{color:var(--red)}.ll.inf{color:var(--blue-2)}
+
+/* TOASTS */
 .toasts{position:fixed;bottom:18px;right:18px;display:flex;flex-direction:column;gap:7px;z-index:300;pointer-events:none}
 .toast{display:flex;align-items:center;gap:9px;padding:10px 14px;background:var(--bg-2);border:1px solid var(--border-md);border-radius:9px;box-shadow:0 4px 20px rgba(0,0,0,.5);font-size:12.5px;min-width:240px;animation:sIn .18s ease both;pointer-events:all}
 .toast.success{border-color:rgba(0,201,80,.2)}.toast.error{border-color:rgba(243,18,96,.2)}
 @keyframes sIn{from{opacity:0;transform:translateX(10px)}to{opacity:1;transform:translateX(0)}}
 @keyframes sOut{from{opacity:1;transform:translateX(0)}to{opacity:0;transform:translateX(10px)}}
-@media(max-width:700px){.feat-grid{grid-template-columns:1fr}.kpi-row{grid-template-columns:repeat(2,1fr)}.th,.tr{grid-template-columns:44px 140px 1fr 90px}.th>:nth-child(n+5),.tr>:nth-child(n+5){display:none}.d-row{flex-direction:column}.d-row .field:first-child{max-width:100%}.stats-strip{gap:36px}}
+
+@media(max-width:700px){
+  .feat-grid{grid-template-columns:1fr}
+  .kpi-row{grid-template-columns:repeat(2,1fr)}
+  .th,.tr{grid-template-columns:44px 140px 1fr 90px}
+  .th>:nth-child(n+5),.tr>:nth-child(n+5){display:none}
+  .d-row{flex-direction:column}
+  .d-row .field:first-child{max-width:100%}
+  .stats-strip{gap:36px}
+}
 </style>
 </head>
 <body>
@@ -224,13 +262,11 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
         <div class="auth-dsub" id="as">Hesabına erişmek için bilgilerini gir</div>
       </div>
 
-      <!-- Tabs (sadece login/register arasında — verify'da gizlenir) -->
       <div class="tabs" id="auth-tabs">
         <div class="tab active" id="tl" onclick="switchTab('login')">Giriş Yap</div>
         <div class="tab" id="tr" onclick="switchTab('register')">Kayıt Ol</div>
       </div>
 
-      <!-- Login / Register formu -->
       <div class="auth-form" id="main-form">
         <div class="aerr" id="aerr"></div>
         <div class="aok" id="aok"></div>
@@ -255,7 +291,6 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
         </button>
       </div>
 
-      <!-- Doğrulama kodu adımı -->
       <div class="verify-step" id="verify-step">
         <div class="aerr" id="verr"></div>
         <div class="verify-meta">
@@ -365,10 +400,17 @@ window.onload = async () => {
 
 // ── Pages ──────────────────────────────────────────────────────────────────────
 function showPage(n) {
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'))
-  document.getElementById('page-' + n).classList.add('active')
-  window.scrollTo(0, 0)
+  document.querySelectorAll('.page').forEach(p => {
+    p.classList.remove('active')
+    // Reset scroll position of each page when hiding
+    p.scrollTop = 0
+  })
+  const target = document.getElementById('page-' + n)
+  target.classList.add('active')
+  // Scroll the target page to top
+  target.scrollTop = 0
 }
+
 function goHome() { token ? showPage('dashboard') : showPage('home') }
 function showAuth(t) { switchTab(t); showPage('auth') }
 
@@ -458,12 +500,17 @@ async function doAuth() {
       showPage('dashboard')
       loadDeployments()
     } else {
-      // Register → show verify step
       const r = await fetch('http://localhost:5001/api/register', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({email, password: pass}) })
       const d = await r.json()
       if (!r.ok) { showErr(d.detail || 'Kayıt başarısız'); return }
-      pendingVerifyEmail = email
-      showVerifyStep(email)
+      token = d.token
+      me = email
+      localStorage.setItem('paas_token', token)
+      localStorage.setItem('paas_email', me)
+      setUser(me)
+      toast('success', '🎉 Kayıt başarılı, hoş geldin!')
+      showPage('dashboard')
+      loadDeployments()
     }
   } catch(e) {
     showErr('Sunucuya bağlanılamadı: ' + e.message)
@@ -482,7 +529,6 @@ function showVerifyStep(email) {
   document.getElementById('as').textContent = ''
   document.getElementById('verify-email-display').textContent = email
   document.getElementById('verr').classList.remove('on')
-  // Clear cells
   document.querySelectorAll('.code-cell').forEach(c => { c.value = ''; c.classList.remove('filled') })
   setTimeout(() => document.querySelector('.code-cell').focus(), 100)
 }
@@ -495,7 +541,6 @@ function hideVerifyStep() {
   pendingVerifyEmail = null
 }
 
-// 6-cell code input UX
 function codeInput(el) {
   const v = el.value.replace(/\D/g, '')
   el.value = v
@@ -680,7 +725,8 @@ function toast(type, msg) {
   setTimeout(()=>{ el.style.animation='sOut .18s ease forwards'; setTimeout(()=>el.remove(),180) },3400)
 }
 async function loadHomeStats() {
-  try { const r=await fetch('/api/deployments'); if(!r.ok)return; const d=await r.json(); document.getElementById('hs-total').textContent=d.length; document.getElementById('hs-running').textContent=d.filter(x=>x.status==='Running').length } catch {}
+  if (!token) { document.getElementById('hs-total').textContent='—'; document.getElementById('hs-running').textContent='—'; return }
+  try { const r=await af('http://localhost:5001/api/deployments'); if(!r.ok)return; const d=await r.json(); document.getElementById('hs-total').textContent=d.length; document.getElementById('hs-running').textContent=d.filter(x=>x.status==='Running').length } catch {}
 }
 </script>
 </body>

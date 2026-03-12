@@ -39,6 +39,8 @@ services:
 
   # --- 2. API SERVİSİ ---
   api-gateway:
+    env_file:
+      - .env
     build: ./api-gateway
     container_name: paas_api
     networks:
@@ -46,10 +48,12 @@ services:
     ports:
       - "5001:8000" # Bypass portu
     volumes:
-      - ./data:/app/data
-
+      - ./api-gateway/data:/app/data
+    
   # --- 3. BUILDER SERVİSİ ---
   builder-service:
+    env_file:
+      - .env
     build: ./builder-service
     container_name: paas_builder
     ports:
