@@ -12,40 +12,16 @@ def on_rm_error(func, path, exc_info):
 
 
 def build_authenticated_url(repo_url: str) -> str:
-    """
-    GitHub token'ı URL'ye gömer: https://TOKEN@github.com/user/repo.git
-
-    NEDEN BUNU YAPIYORUZ?
-    - GitHub artık kullanıcı adı/şifre ile clone'u desteklemiyor
-    - Container içinde interaktif giriş yapılamıyor (terminal yok)
-    - Token'ı URL'ye gömmek en yaygın ve güvenli container çözümü
-    - Token ortam değişkeninden okunuyor, koda hardcode edilmiyor
-
-    TOKEN OLMADAN:
-    - Public repo: token gerekmez, düz URL çalışır
-    - Private repo: "could not read Username" hatası alırsın
-    """
+    # Koda gömdüğün token'ı buradan SİL, yerine sadece tırnak bırak
+    # Token'ı artık sadece .env veya docker-compose üzerinden alacağız
     token = os.environ.get("GITHUB_TOKEN", "").strip()
 
-    # Token yoksa URL'yi olduğu gibi kullan (public repo için yeterli)
     if not token:
-        print("[git] GITHUB_TOKEN bulunamadı — public repo olarak deneniyor")
+        print("[git] ⚠️ GITHUB_TOKEN bulunamadı!")
         return repo_url
 
-    # URL zaten token içeriyorsa dokunma
-    if "@github.com" in repo_url:
-        return repo_url
-
-    # https://github.com/... → https://TOKEN@github.com/...
-    # Örnek: https://github.com/ahmet/proje → https://ghp_abc@github.com/ahmet/proje
-    authenticated = re.sub(
-        r"https://github\.com",
-        f"https://{token}@github.com",
-        repo_url
-    )
-
-    # Log'a token'ı YAZMA — güvenlik riski
-    print(f"[git] Token ile kimlik doğrulama aktif")
+    base_url = repo_url.replace("https://", "")
+    authenticated = f"https://oauth2:{token}@{base_url}"
     return authenticated
 
 

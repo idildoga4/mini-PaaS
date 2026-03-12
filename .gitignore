@@ -1,1 +1,6 @@
+
 .env
+data/paas_data.db
+__pycache__/
+*.pyc
+workspace/
