@@ -16,26 +16,11 @@
   --r:10px;--r-lg:14px;
 }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-
-/* KEY FIX: html + body fill full viewport, no overflow */
-html, body {
-  height: 100%;
-  overflow: hidden;
-}
+html,body{height:100%;overflow:hidden}
 body{font-family:var(--sans);background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased;}
 
-/* PAGES — each page is a full-screen layer */
-.page {
-  display: none;
-  position: fixed;
-  inset: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-}
-.page.active {
-  display: block;
-  animation: fadeUp .28s ease both;
-}
+.page{display:none;position:fixed;inset:0;overflow-y:auto;overflow-x:hidden}
+.page.active{display:block;animation:fadeUp .28s ease both}
 @keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
 
 /* NAVBAR */
@@ -54,12 +39,13 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);-webkit-font
 .btn-outline{background:transparent;color:var(--text);border:1px solid var(--border-md)}.btn-outline:hover:not(:disabled){background:var(--bg-2);border-color:rgba(255,255,255,.2)}
 .btn-white{background:#fff;color:#000;border:1px solid transparent;font-weight:600}.btn-white:hover:not(:disabled){background:#e5e5e5}
 .btn-blue{background:var(--blue);color:#fff;font-weight:600}.btn-blue:hover:not(:disabled){background:#0060d3}
+.btn-red{background:rgba(243,18,96,.1);color:var(--red);border:1px solid rgba(243,18,96,.2);font-weight:500}.btn-red:hover:not(:disabled){background:rgba(243,18,96,.18);border-color:rgba(243,18,96,.35)}
 .btn-lg{height:40px;padding:0 18px;font-size:14px;border-radius:9px}
 .btn-xl{height:46px;padding:0 24px;font-size:15px;border-radius:11px}
 .btn-full{width:100%}
 .btn-link{background:transparent;border:none;color:var(--blue-2);font-size:12px;padding:0;height:auto;cursor:pointer;font-family:var(--sans)}.btn-link:hover{text-decoration:underline}
 .spin{display:none;width:13px;height:13px;border:2px solid rgba(0,0,0,.15);border-top-color:#000;border-radius:50%;animation:rot .6s linear infinite}
-.btn-blue .spin,.btn-white.loading .spin{border-color:rgba(255,255,255,.2);border-top-color:#fff}
+.btn-blue .spin{border-color:rgba(255,255,255,.2);border-top-color:#fff}
 @keyframes rot{to{transform:rotate(360deg)}}
 
 /* INPUTS */
@@ -70,15 +56,13 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);-webkit-font
 .inp::placeholder{color:var(--text-3)}
 .inp.mono{font-family:var(--mono);font-size:12.5px}
 .inp.err{border-color:rgba(243,18,96,.5)}.inp.err:focus{box-shadow:0 0 0 3px rgba(243,18,96,.08)}
-
-/* PASSWORD INPUT WITH TOGGLE */
 .pw-wrap{position:relative}
 .pw-wrap .inp{padding-right:38px}
 .pw-toggle{position:absolute;right:10px;top:50%;transform:translateY(-50%);background:transparent;border:none;cursor:pointer;color:var(--text-3);font-size:14px;padding:0;line-height:1}
 .pw-toggle:hover{color:var(--text-2)}
 
-/* ── HOME ── */
-#page-home { }
+/* HOME */
+#page-home{}
 .hero{display:flex;flex-direction:column;align-items:center;text-align:center;padding:88px 24px 64px;position:relative;overflow:hidden}
 .hero::before{content:'';position:absolute;top:-80px;left:50%;transform:translateX(-50%);width:640px;height:640px;background:radial-gradient(ellipse,rgba(0,112,243,.13) 0%,rgba(0,112,243,.04) 45%,transparent 70%);pointer-events:none}
 .hero::after{content:'';position:absolute;inset:0;background-image:linear-gradient(var(--border) 1px,transparent 1px),linear-gradient(90deg,var(--border) 1px,transparent 1px);background-size:44px 44px;mask-image:radial-gradient(ellipse 55% 55% at 50% 0%,black,transparent 80%);pointer-events:none}
@@ -100,18 +84,9 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);-webkit-font
 .st-n{font-size:30px;font-weight:600;letter-spacing:-1px;font-family:var(--mono);margin-bottom:3px}
 .st-l{font-size:12px;color:var(--text-3)}
 
-/* ── AUTH ── */
-/* auth page centers its content */
-#page-auth {
-  display: none;
-  align-items: center;
-  justify-content: center;
-  padding-bottom: 32px;
-}
-#page-auth.active {
-  display: flex;
-  flex-direction: column;
-}
+/* AUTH */
+#page-auth{display:none;align-items:center;justify-content:center;padding-bottom:32px}
+#page-auth.active{display:flex;flex-direction:column}
 .auth-wrap{width:100%;max-width:380px;padding:20px;margin-top:54px}
 .auth-card{background:var(--bg-1);border:1px solid var(--border-md);border-radius:var(--r-lg);padding:28px;box-shadow:0 0 0 1px rgba(255,255,255,.04),0 20px 60px rgba(0,0,0,.8)}
 .auth-hd{text-align:center;margin-bottom:24px}
@@ -132,8 +107,6 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);-webkit-font
 .str-hint{font-size:11px;color:var(--text-3);margin-top:-6px;min-height:14px}
 .auth-ft{margin-top:16px;text-align:center;font-size:12px;color:var(--text-3)}
 .auth-ft a{color:var(--text-2);text-decoration:none;cursor:pointer}.auth-ft a:hover{color:var(--text)}
-
-/* ── VERIFY STEP ── */
 .verify-step{display:none;flex-direction:column;gap:14px}
 .verify-step.on{display:flex}
 .code-row{display:flex;gap:8px;justify-content:center}
@@ -143,8 +116,8 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);-webkit-font
 .verify-meta{text-align:center;font-size:12px;color:var(--text-3);line-height:1.6}
 .verify-meta strong{color:var(--text-2)}
 
-/* ── DASHBOARD ── */
-#page-dashboard { }
+/* DASHBOARD */
+#page-dashboard{}
 .dash{max-width:1080px;margin:0 auto;padding:28px 22px}
 .dash-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:28px;flex-wrap:wrap;gap:14px}
 .dash-heading{font-size:21px;font-weight:600;letter-spacing:-.5px;margin-bottom:2px}
@@ -163,38 +136,75 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);-webkit-font
 .d-row .field{flex:1}.d-row .field:first-child{max-width:200px}
 .hint{font-size:11.5px;color:var(--text-3);margin-top:10px;display:flex;align-items:center;gap:5px}
 .kbd{padding:2px 5px;background:var(--bg-3);border:1px solid var(--border-md);border-radius:3px;font-family:var(--mono);font-size:10px;color:var(--text-2)}
+
+/* TABLE */
 .tbl-card{background:var(--bg-1);border:1px solid var(--border-md);border-radius:var(--r-lg);overflow:hidden}
 .tbl-hd{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
 .tbl-title{font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:7px}
 .cnt{padding:1px 7px;background:var(--bg-3);border:1px solid var(--border);border-radius:100px;font-size:10.5px;color:var(--text-2);font-family:var(--mono)}
-.th{display:grid;grid-template-columns:52px 170px 1fr 108px 96px 84px;padding:9px 18px;background:var(--bg-2);border-bottom:1px solid var(--border);font-size:10.5px;font-weight:500;color:var(--text-3);text-transform:uppercase;letter-spacing:.7px;font-family:var(--mono)}
-.tr{display:grid;grid-template-columns:52px 170px 1fr 108px 96px 84px;padding:0 18px;height:50px;align-items:center;border-bottom:1px solid var(--border);transition:background .12s;font-size:12.5px}
-.tr:last-child{border-bottom:none}.tr:hover{background:rgba(255,255,255,.025)}
+
+/* Sütun düzeni: # | Proje | Repo | Durum | Tarih | Aksiyonlar */
+.th{display:grid;grid-template-columns:44px 150px 1fr 108px 90px 130px;padding:9px 18px;background:var(--bg-2);border-bottom:1px solid var(--border);font-size:10.5px;font-weight:500;color:var(--text-3);text-transform:uppercase;letter-spacing:.7px;font-family:var(--mono)}
+.tr{display:grid;grid-template-columns:44px 150px 1fr 108px 90px 130px;padding:0 18px;height:52px;align-items:center;border-bottom:1px solid var(--border);transition:background .12s;font-size:12.5px}
+.tr:last-child{border-bottom:none}.tr:hover{background:rgba(255,255,255,.02)}
 .tr-id{font-family:var(--mono);font-size:11px;color:var(--text-3)}
 .tr-name{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:8px}
 .tr-url{font-size:11.5px;color:var(--text-2);font-family:var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:8px}
 .tr-time{font-size:11px;color:var(--text-3);font-family:var(--mono)}
-.tr-link a{color:var(--blue-2);font-size:12px;text-decoration:none;display:flex;align-items:center;gap:3px}.tr-link a:hover{text-decoration:underline}
+
+/* Aksiyon butonları */
+.tr-actions{display:flex;align-items:center;gap:5px}
+.act-btn{display:inline-flex;align-items:center;justify-content:center;gap:4px;height:26px;padding:0 9px;border-radius:5px;font-size:11.5px;font-weight:500;cursor:pointer;border:none;transition:all .15s;white-space:nowrap;font-family:var(--sans)}
+.act-open{background:rgba(51,142,247,.1);color:var(--blue-2);border:1px solid rgba(51,142,247,.2)}.act-open:hover{background:rgba(51,142,247,.18);border-color:rgba(51,142,247,.4)}
+.act-log{background:rgba(245,165,36,.08);color:var(--amber);border:1px solid rgba(245,165,36,.2)}.act-log:hover{background:rgba(245,165,36,.16);border-color:rgba(245,165,36,.35)}
+.act-del{background:transparent;color:var(--text-3);border:1px solid transparent;padding:0 6px}.act-del:hover{background:rgba(243,18,96,.08);color:var(--red);border-color:rgba(243,18,96,.2)}
+.act-del.loading{opacity:.5;pointer-events:none}
+
+/* STATUS CHIPS */
 .chip{display:inline-flex;align-items:center;gap:4px;padding:2px 7px;border-radius:100px;font-size:10.5px;font-weight:500;font-family:var(--mono)}
 .chip-d{width:4px;height:4px;border-radius:50%;flex-shrink:0}
 .chip.running{background:rgba(0,201,80,.09);color:var(--green);border:1px solid rgba(0,201,80,.18)}.chip.running .chip-d{background:var(--green);animation:blink 2s infinite}
 .chip.pending,.chip.building{background:rgba(245,165,36,.09);color:var(--amber);border:1px solid rgba(245,165,36,.18)}.chip.pending .chip-d,.chip.building .chip-d{background:var(--amber);animation:blink 1.2s infinite}
 .chip.failed{background:rgba(243,18,96,.07);color:var(--red);border:1px solid rgba(243,18,96,.18)}.chip.failed .chip-d{background:var(--red)}
+
 .empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:52px 20px;gap:10px}
 .empty-ic{width:40px;height:40px;border:1px solid var(--border-md);border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:18px;background:var(--bg-2);margin-bottom:2px}
 .empty-t{font-size:13px;font-weight:500}.empty-s{font-size:12px;color:var(--text-3);text-align:center;max-width:240px;line-height:1.55}
 
+/* SİLME ONAY MODALI */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);z-index:400;align-items:center;justify-content:center}
+.modal-overlay.open{display:flex;animation:fadeIn .15s ease both}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.modal{background:var(--bg-1);border:1px solid var(--border-md);border-radius:var(--r-lg);padding:24px;width:100%;max-width:340px;box-shadow:0 20px 60px rgba(0,0,0,.8);animation:scaleIn .15s ease both}
+@keyframes scaleIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}
+.modal-icon{width:40px;height:40px;background:rgba(243,18,96,.08);border:1px solid rgba(243,18,96,.18);border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:18px;margin-bottom:14px}
+.modal-title{font-size:15px;font-weight:600;margin-bottom:6px;letter-spacing:-.3px}
+.modal-desc{font-size:12.5px;color:var(--text-2);line-height:1.55;margin-bottom:20px}
+.modal-desc strong{color:var(--text)}
+.modal-actions{display:flex;gap:8px;justify-content:flex-end}
+
 /* LOG DRAWER */
-.drawer{display:none;position:fixed;bottom:0;left:0;right:0;height:280px;background:var(--bg-1);border-top:1px solid var(--border-md);box-shadow:0 -6px 30px rgba(0,0,0,.6);z-index:200;flex-direction:column}
+.drawer{display:none;position:fixed;bottom:0;left:0;right:0;background:var(--bg-1);border-top:1px solid var(--border-md);box-shadow:0 -6px 30px rgba(0,0,0,.6);z-index:200;flex-direction:column;transition:height .2s ease}
 .drawer.open{display:flex;animation:slideUp .2s ease both}
+.drawer.expanded{height:480px}
+.drawer.normal{height:280px}
 @keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
 .drawer-hd{padding:10px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
 .drawer-title{font-size:11.5px;font-weight:500;font-family:var(--mono);color:var(--text-2);display:flex;align-items:center;gap:7px}
+.drawer-status{padding:2px 7px;border-radius:4px;font-size:10px;font-family:var(--mono)}
+.drawer-status.running{background:rgba(0,201,80,.1);color:var(--green)}
+.drawer-status.building{background:rgba(245,165,36,.1);color:var(--amber)}
+.drawer-status.failed{background:rgba(243,18,96,.08);color:var(--red)}
+.drawer-hd-right{display:flex;align-items:center;gap:6px}
+.drawer-expand{background:transparent;border:none;color:var(--text-3);cursor:pointer;font-size:13px;padding:2px 5px;border-radius:4px;line-height:1}.drawer-expand:hover{color:var(--text-2);background:var(--bg-3)}
 .drawer-body{flex:1;overflow-y:auto;padding:12px 16px;font-family:var(--mono);font-size:11.5px;line-height:1.9;color:#666}
-.ll.ok{color:var(--green)}.ll.er{color:var(--red)}.ll.inf{color:var(--blue-2)}
+.drawer-body::-webkit-scrollbar{width:4px}.drawer-body::-webkit-scrollbar-track{background:transparent}.drawer-body::-webkit-scrollbar-thumb{background:var(--bg-3);border-radius:2px}
+.ll{display:block;padding:1px 0}
+.ll.ok{color:var(--green)}.ll.er{color:var(--red)}.ll.inf{color:var(--blue-2)}.ll.warn{color:var(--amber)}
+.ll.ts{color:var(--text-3);font-size:10.5px}
 
 /* TOASTS */
-.toasts{position:fixed;bottom:18px;right:18px;display:flex;flex-direction:column;gap:7px;z-index:300;pointer-events:none}
+.toasts{position:fixed;bottom:18px;right:18px;display:flex;flex-direction:column;gap:7px;z-index:500;pointer-events:none}
 .toast{display:flex;align-items:center;gap:9px;padding:10px 14px;background:var(--bg-2);border:1px solid var(--border-md);border-radius:9px;box-shadow:0 4px 20px rgba(0,0,0,.5);font-size:12.5px;min-width:240px;animation:sIn .18s ease both;pointer-events:all}
 .toast.success{border-color:rgba(0,201,80,.2)}.toast.error{border-color:rgba(243,18,96,.2)}
 @keyframes sIn{from{opacity:0;transform:translateX(10px)}to{opacity:1;transform:translateX(0)}}
@@ -203,7 +213,7 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);-webkit-font
 @media(max-width:700px){
   .feat-grid{grid-template-columns:1fr}
   .kpi-row{grid-template-columns:repeat(2,1fr)}
-  .th,.tr{grid-template-columns:44px 140px 1fr 90px}
+  .th,.tr{grid-template-columns:40px 120px 1fr 90px}
   .th>:nth-child(n+5),.tr>:nth-child(n+5){display:none}
   .d-row{flex-direction:column}
   .d-row .field:first-child{max-width:100%}
@@ -213,7 +223,6 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);-webkit-font
 </head>
 <body>
 
-<!-- NAVBAR -->
 <nav class="nav">
   <div class="nav-logo" onclick="goHome()">
     <div class="logo-mark"><svg viewBox="0 0 16 16" fill="none"><path d="M8 1L15 14H1L8 1Z" fill="black"/></svg></div>
@@ -227,7 +236,7 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);-webkit-font
   </div>
 </nav>
 
-<!-- ═══ PAGE 1: HOME ═══ -->
+<!-- HOME -->
 <div id="page-home" class="page active">
   <section class="hero">
     <div class="badge"><div class="badge-dot"></div>Mikroservis · FastAPI · Docker · Traefik</div>
@@ -241,7 +250,7 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);-webkit-font
   <div class="feat-grid">
     <div class="feat"><div class="feat-ico">⚡</div><div class="feat-t">Otomatik Build</div><div class="feat-d">Dockerfile yoksa otomatik üretir. Node, Python, static HTML — hepsini tanır.</div></div>
     <div class="feat"><div class="feat-ico">🌐</div><div class="feat-t">Anlık Subdomain</div><div class="feat-d">Her deploy için <code style="font-family:var(--mono);font-size:11.5px">projen.localhost</code> hazır. Traefik otomatik yönlendirir.</div></div>
-    <div class="feat"><div class="feat-ico">🔐</div><div class="feat-t">Güvenli Auth</div><div class="feat-d">E-posta doğrulama + JWT token. Hesabınız güvende.</div></div>
+    <div class="feat"><div class="feat-ico">🔐</div><div class="feat-t">Güvenli Auth</div><div class="feat-d">GitHub OAuth + JWT token. Hesabınız güvende.</div></div>
   </div>
   <div class="stats-strip">
     <div class="st"><div class="st-n" id="hs-total">—</div><div class="st-l">Total Deploy</div></div>
@@ -251,22 +260,19 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);-webkit-font
   </div>
 </div>
 
-<!-- ═══ PAGE 2: AUTH ═══ -->
+<!-- AUTH -->
 <div id="page-auth" class="page">
   <div class="auth-wrap">
     <div class="auth-card">
-
       <div class="auth-hd">
         <div class="auth-logo-wrap"><svg viewBox="0 0 16 16" fill="none"><path d="M8 1L15 14H1L8 1Z" fill="black"/></svg></div>
         <div class="auth-title" id="at">Mini PaaS'a giriş yap</div>
         <div class="auth-dsub" id="as">Hesabına erişmek için bilgilerini gir</div>
       </div>
-
       <div class="tabs" id="auth-tabs">
         <div class="tab active" id="tl" onclick="switchTab('login')">Giriş Yap</div>
         <div class="tab" id="tr" onclick="switchTab('register')">Kayıt Ol</div>
       </div>
-
       <div class="auth-form" id="main-form">
         <div class="aerr" id="aerr"></div>
         <div class="aok" id="aok"></div>
@@ -278,7 +284,7 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);-webkit-font
           <label class="label">Şifre</label>
           <div class="pw-wrap">
             <input class="inp" id="ap" type="password" placeholder="••••••••" autocomplete="current-password" oninput="pwInput()" onkeydown="aEnter(event)">
-            <button class="pw-toggle" type="button" onclick="togglePw()" title="Şifreyi göster/gizle">👁</button>
+            <button class="pw-toggle" type="button" onclick="togglePw()">👁</button>
           </div>
         </div>
         <div id="strwrap" style="display:none">
@@ -290,13 +296,9 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);-webkit-font
           <span id="asubt">Giriş Yap</span>
         </button>
       </div>
-
       <div class="verify-step" id="verify-step">
         <div class="aerr" id="verr"></div>
-        <div class="verify-meta">
-          <strong id="verify-email-display"></strong> adresine<br>
-          6 haneli doğrulama kodu gönderdik
-        </div>
+        <div class="verify-meta"><strong id="verify-email-display"></strong> adresine<br>6 haneli doğrulama kodu gönderdik</div>
         <div class="code-row" id="code-row">
           <input class="code-cell" maxlength="1" data-idx="0" oninput="codeInput(this)" onkeydown="codeKey(event,this)" onpaste="codePaste(event)">
           <input class="code-cell" maxlength="1" data-idx="1" oninput="codeInput(this)" onkeydown="codeKey(event,this)">
@@ -306,15 +308,10 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);-webkit-font
           <input class="code-cell" maxlength="1" data-idx="5" oninput="codeInput(this)" onkeydown="codeKey(event,this)">
         </div>
         <button class="btn btn-white btn-lg btn-full" id="vsub" onclick="doVerify()">
-          <span class="spin" id="vsp"></span>
-          <span>Doğrula</span>
+          <span class="spin" id="vsp"></span><span>Doğrula</span>
         </button>
-        <div style="text-align:center;font-size:12px;color:var(--text-3)">
-          Kod gelmedi mi?
-          <button class="btn-link" onclick="resendCode()">Tekrar gönder</button>
-        </div>
+        <div style="text-align:center;font-size:12px;color:var(--text-3)">Kod gelmedi mi? <button class="btn-link" onclick="resendCode()">Tekrar gönder</button></div>
       </div>
-
       <div class="auth-ft" id="auth-ft">
         <span id="aft">Hesabın yok mu?</span>
         <a onclick="switchTab(curTab==='login'?'register':'login')" id="afl"> Kayıt ol</a>
@@ -323,7 +320,7 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);-webkit-font
   </div>
 </div>
 
-<!-- ═══ PAGE 3: DASHBOARD ═══ -->
+<!-- DASHBOARD -->
 <div id="page-dashboard" class="page">
   <div class="dash">
     <div class="dash-top">
@@ -359,33 +356,63 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);-webkit-font
       <div class="tbl-hd">
         <div class="tbl-title">Tüm Deployments <span class="cnt" id="tcnt">0</span></div>
       </div>
-      <div class="th"><div>#</div><div>Proje</div><div>Repo</div><div>Durum</div><div>Tarih</div><div>Link</div></div>
+      <div class="th">
+        <div>#</div><div>Proje</div><div>Repo</div><div>Durum</div><div>Tarih</div><div>Aksiyonlar</div>
+      </div>
       <div id="tbody"></div>
     </div>
   </div>
 </div>
 
 <!-- LOG DRAWER -->
-<div class="drawer" id="drawer">
+<div class="drawer normal" id="drawer">
   <div class="drawer-hd">
-    <div class="drawer-title"><span style="color:var(--amber)">◉</span><span id="dl-proj">build logs</span></div>
-    <button class="btn btn-ghost" onclick="closeDrawer()" style="height:26px;font-size:12px">✕</button>
+    <div class="drawer-title">
+      <span style="color:var(--amber)">◉</span>
+      <span id="dl-proj">build logs</span>
+      <span class="drawer-status" id="dl-status"></span>
+    </div>
+    <div class="drawer-hd-right">
+      <button class="drawer-expand" onclick="toggleDrawerSize()" title="Büyüt/Küçült" id="expand-btn">⬆</button>
+      <button class="btn btn-ghost" onclick="closeDrawer()" style="height:26px;font-size:12px;padding:0 8px">✕ Kapat</button>
+    </div>
   </div>
   <div class="drawer-body" id="dl-body"></div>
+</div>
+
+<!-- SİLME ONAY MODALI -->
+<div class="modal-overlay" id="del-modal">
+  <div class="modal">
+    <div class="modal-icon">🗑</div>
+    <div class="modal-title">Deploy'u sil</div>
+    <div class="modal-desc">
+      <strong id="del-proj-name"></strong> silinecek.<br>
+      Bu işlem geri alınamaz.
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeDeleteModal()">Vazgeç</button>
+      <button class="btn btn-red btn-lg" id="del-confirm-btn" onclick="confirmDelete()">
+        <span class="spin" id="del-spin" style="border-color:rgba(243,18,96,.2);border-top-color:var(--red)"></span>
+        Sil
+      </button>
+    </div>
+  </div>
 </div>
 
 <div class="toasts" id="toasts"></div>
 
 <script>
-// ── State ──────────────────────────────────────────────────────────────────────
-let token   = localStorage.getItem('paas_token')  || null
-let me      = localStorage.getItem('paas_email')  || null
-let curTab  = 'login'
-let rows    = []
+let token  = localStorage.getItem('paas_token') || null
+let me     = localStorage.getItem('paas_email') || null
+let curTab = 'login'
+let rows   = []
 let polling = new Set()
 let pendingVerifyEmail = null
+let pendingDeleteId    = null
+let drawerDeployId     = null
+let drawerExpanded     = false
 
-// ── Init ───────────────────────────────────────────────────────────────────────
+// ── Init ──────────────────────────────────────────────────────
 window.onload = async () => {
   if (token) {
     try {
@@ -394,339 +421,406 @@ window.onload = async () => {
     } catch {}
     clearToken()
   }
-  showPage('home')
-  loadHomeStats()
+  showPage('home'); loadHomeStats()
 }
 
-// ── Pages ──────────────────────────────────────────────────────────────────────
+// ── Pages ─────────────────────────────────────────────────────
 function showPage(n) {
-  document.querySelectorAll('.page').forEach(p => {
-    p.classList.remove('active')
-    // Reset scroll position of each page when hiding
-    p.scrollTop = 0
-  })
-  const target = document.getElementById('page-' + n)
-  target.classList.add('active')
-  // Scroll the target page to top
-  target.scrollTop = 0
+  document.querySelectorAll('.page').forEach(p => { p.classList.remove('active'); p.scrollTop = 0 })
+  const t = document.getElementById('page-' + n)
+  t.classList.add('active'); t.scrollTop = 0
 }
+function goHome()     { token ? showPage('dashboard') : showPage('home') }
+function showAuth(t)  { switchTab(t); showPage('auth') }
 
-function goHome() { token ? showPage('dashboard') : showPage('home') }
-function showAuth(t) { switchTab(t); showPage('auth') }
-
-// ── Auth tab switch ────────────────────────────────────────────────────────────
+// ── Auth ──────────────────────────────────────────────────────
 function switchTab(t) {
-  curTab = t
-  hideVerifyStep()
-  document.getElementById('tl').classList.toggle('active', t === 'login')
-  document.getElementById('tr').classList.toggle('active', t === 'register')
-  document.getElementById('at').textContent   = t === 'login' ? "Mini PaaS'a giriş yap" : "Yeni hesap oluştur"
-  document.getElementById('as').textContent   = t === 'login' ? "Hesabına erişmek için bilgilerini gir" : "Saniyeler içinde deploy etmeye başla"
-  document.getElementById('asubt').textContent = t === 'login' ? 'Giriş Yap' : 'Kayıt Ol'
-  document.getElementById('aft').textContent  = t === 'login' ? "Hesabın yok mu?" : "Zaten hesabın var mı?"
-  document.getElementById('afl').textContent  = t === 'login' ? " Kayıt ol" : " Giriş yap"
-  document.getElementById('strwrap').style.display = t === 'register' ? 'block' : 'none'
+  curTab = t; hideVerifyStep()
+  document.getElementById('tl').classList.toggle('active', t==='login')
+  document.getElementById('tr').classList.toggle('active', t==='register')
+  document.getElementById('at').textContent    = t==='login' ? "Mini PaaS'a giriş yap" : "Yeni hesap oluştur"
+  document.getElementById('as').textContent    = t==='login' ? "Hesabına erişmek için bilgilerini gir" : "Saniyeler içinde deploy etmeye başla"
+  document.getElementById('asubt').textContent = t==='login' ? 'Giriş Yap' : 'Kayıt Ol'
+  document.getElementById('aft').textContent   = t==='login' ? "Hesabın yok mu?" : "Zaten hesabın var mı?"
+  document.getElementById('afl').textContent   = t==='login' ? " Kayıt ol" : " Giriş yap"
+  document.getElementById('strwrap').style.display = t==='register' ? 'block' : 'none'
   clearAErr()
   document.getElementById('au').value = ''
   document.getElementById('ap').value = ''
   document.getElementById('sf').style.width = '0'
   document.getElementById('str-hint').textContent = ''
 }
-
 function clearAErr() {
   document.getElementById('aerr').classList.remove('on')
   document.getElementById('aok').classList.remove('on')
   document.getElementById('au').classList.remove('err')
   document.getElementById('ap').classList.remove('err')
 }
-function showErr(m)  { const e=document.getElementById('aerr'); e.textContent=m; e.classList.add('on') }
-function showOk(m)   { const e=document.getElementById('aok');  e.textContent=m; e.classList.add('on') }
+function showErr(m) { const e=document.getElementById('aerr'); e.textContent=m; e.classList.add('on') }
+function showOk(m)  { const e=document.getElementById('aok');  e.textContent=m; e.classList.add('on') }
 
-// ── Password strength ──────────────────────────────────────────────────────────
 function pwInput() {
-  if (curTab !== 'register') return
-  const pw   = document.getElementById('ap').value
-  const fill = document.getElementById('sf')
-  const hint = document.getElementById('str-hint')
-  let s = 0, msg = ''
-  if (pw.length >= 8)             s++
-  if (/[A-Z]/.test(pw))           s++
-  if (/[a-z]/.test(pw))           s++
-  if (/[0-9]/.test(pw))           s++
-  if (/[^A-Za-z0-9]/.test(pw))    s++
-  const colors = ['transparent','#f31260','#f5a524','#f5a524','#00c950','#00c950']
-  const widths  = ['0%','20%','45%','65%','85%','100%']
-  fill.style.width      = widths[s]
-  fill.style.background = colors[s]
-  if (!pw)           msg = ''
-  else if (s <= 1)   msg = '⚠ Çok zayıf — en az 8 karakter, büyük/küçük harf ve rakam'
-  else if (s === 2)  msg = '⚠ Zayıf — büyük harf ve rakam ekleyin'
-  else if (s === 3)  msg = '○ Orta'
-  else if (s === 4)  msg = '● Güçlü'
-  else               msg = '✓ Çok güçlü'
-  hint.textContent = msg
-  hint.style.color = colors[s]
+  if (curTab!=='register') return
+  const pw=document.getElementById('ap').value, fill=document.getElementById('sf'), hint=document.getElementById('str-hint')
+  let s=0
+  if(pw.length>=8)s++; if(/[A-Z]/.test(pw))s++; if(/[a-z]/.test(pw))s++; if(/[0-9]/.test(pw))s++; if(/[^A-Za-z0-9]/.test(pw))s++
+  const c=['transparent','#f31260','#f5a524','#f5a524','#00c950','#00c950']
+  const w=['0%','20%','45%','65%','85%','100%']
+  fill.style.width=w[s]; fill.style.background=c[s]
+  const msgs=['','⚠ Çok zayıf','⚠ Zayıf','○ Orta','● Güçlü','✓ Çok güçlü']
+  hint.textContent=pw?msgs[s]:''; hint.style.color=c[s]
 }
+function togglePw() { const i=document.getElementById('ap'); i.type=i.type==='password'?'text':'password' }
+function aEnter(e) { if(e.key==='Enter') doAuth() }
 
-function togglePw() {
-  const inp = document.getElementById('ap')
-  inp.type = inp.type === 'password' ? 'text' : 'password'
-}
-
-function aEnter(e) { if (e.key === 'Enter') doAuth() }
-
-// ── Main auth submit ───────────────────────────────────────────────────────────
 async function doAuth() {
-  const email = document.getElementById('au').value.trim()
-  const pass  = document.getElementById('ap').value
+  const email=document.getElementById('au').value.trim()
+  const pass=document.getElementById('ap').value
   clearAErr()
-  if (!email) { showErr('E-posta adresi gerekli'); document.getElementById('au').classList.add('err'); return }
-  if (!pass)  { showErr('Şifre gerekli'); document.getElementById('ap').classList.add('err'); return }
-
-  const btn = document.getElementById('asub')
-  const sp  = document.getElementById('asp')
-  btn.disabled = true; sp.style.display = 'inline-block'
-
+  if(!email){showErr('E-posta adresi gerekli');document.getElementById('au').classList.add('err');return}
+  if(!pass){showErr('Şifre gerekli');document.getElementById('ap').classList.add('err');return}
+  const btn=document.getElementById('asub'), sp=document.getElementById('asp')
+  btn.disabled=true; sp.style.display='inline-block'
   try {
-    if (curTab === 'login') {
-      const r = await fetch('http://localhost:5001/api/login', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({email, password: pass}) })
-      const d = await r.json()
-      if (!r.ok) { showErr(d.detail || 'Giriş başarısız'); return }
-      token = d.token; me = d.email
-      localStorage.setItem('paas_token', token)
-      localStorage.setItem('paas_email', me)
-      setUser(me)
-      toast('success', '👋 Hoş geldin!')
-      showPage('dashboard')
-      loadDeployments()
-    } else {
-      const r = await fetch('http://localhost:5001/api/register', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({email, password: pass}) })
-      const d = await r.json()
-      if (!r.ok) { showErr(d.detail || 'Kayıt başarısız'); return }
-      token = d.token
-      me = email
-      localStorage.setItem('paas_token', token)
-      localStorage.setItem('paas_email', me)
-      setUser(me)
-      toast('success', '🎉 Kayıt başarılı, hoş geldin!')
-      showPage('dashboard')
-      loadDeployments()
-    }
-  } catch(e) {
-    showErr('Sunucuya bağlanılamadı: ' + e.message)
-  } finally {
-    btn.disabled = false; sp.style.display = 'none'
-  }
+    const url = curTab==='login' ? 'http://localhost:5001/api/login' : 'http://localhost:5001/api/register'
+    const r = await fetch(url, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password:pass})})
+    const d = await r.json()
+    if(!r.ok){showErr(d.detail||(curTab==='login'?'Giriş başarısız':'Kayıt başarısız'));return}
+    token=d.token; me=email
+    localStorage.setItem('paas_token',token); localStorage.setItem('paas_email',me)
+    setUser(me)
+    toast('success', curTab==='login' ? '👋 Hoş geldin!' : '🎉 Kayıt başarılı, hoş geldin!')
+    showPage('dashboard'); loadDeployments()
+  } catch(e) { showErr('Sunucuya bağlanılamadı: '+e.message) }
+  finally { btn.disabled=false; sp.style.display='none' }
 }
 
-// ── Verify step ────────────────────────────────────────────────────────────────
 function showVerifyStep(email) {
-  document.getElementById('main-form').style.display  = 'none'
-  document.getElementById('auth-tabs').style.display  = 'none'
-  document.getElementById('auth-ft').style.display    = 'none'
+  document.getElementById('main-form').style.display='none'
+  document.getElementById('auth-tabs').style.display='none'
+  document.getElementById('auth-ft').style.display='none'
   document.getElementById('verify-step').classList.add('on')
-  document.getElementById('at').textContent = 'E-postanı doğrula'
-  document.getElementById('as').textContent = ''
-  document.getElementById('verify-email-display').textContent = email
+  document.getElementById('at').textContent='E-postanı doğrula'
+  document.getElementById('as').textContent=''
+  document.getElementById('verify-email-display').textContent=email
   document.getElementById('verr').classList.remove('on')
-  document.querySelectorAll('.code-cell').forEach(c => { c.value = ''; c.classList.remove('filled') })
-  setTimeout(() => document.querySelector('.code-cell').focus(), 100)
+  document.querySelectorAll('.code-cell').forEach(c=>{c.value='';c.classList.remove('filled')})
+  setTimeout(()=>document.querySelector('.code-cell').focus(),100)
 }
-
 function hideVerifyStep() {
-  document.getElementById('main-form').style.display  = ''
-  document.getElementById('auth-tabs').style.display  = ''
-  document.getElementById('auth-ft').style.display    = ''
+  document.getElementById('main-form').style.display=''
+  document.getElementById('auth-tabs').style.display=''
+  document.getElementById('auth-ft').style.display=''
   document.getElementById('verify-step').classList.remove('on')
-  pendingVerifyEmail = null
+  pendingVerifyEmail=null
 }
-
 function codeInput(el) {
-  const v = el.value.replace(/\D/g, '')
-  el.value = v
-  if (v) { el.classList.add('filled'); const next = el.parentElement.children[+el.dataset.idx + 1]; if (next) next.focus() }
-  else     el.classList.remove('filled')
+  const v=el.value.replace(/\D/g,''); el.value=v
+  if(v){el.classList.add('filled');const n=el.parentElement.children[+el.dataset.idx+1];if(n)n.focus()}
+  else el.classList.remove('filled')
   autoSubmitIfFull()
 }
-function codeKey(e, el) {
-  if (e.key === 'Backspace' && !el.value) {
-    const prev = el.parentElement.children[+el.dataset.idx - 1]
-    if (prev) { prev.value = ''; prev.classList.remove('filled'); prev.focus() }
-  }
-  if (e.key === 'Enter') doVerify()
+function codeKey(e,el) {
+  if(e.key==='Backspace'&&!el.value){const p=el.parentElement.children[+el.dataset.idx-1];if(p){p.value='';p.classList.remove('filled');p.focus()}}
+  if(e.key==='Enter') doVerify()
 }
 function codePaste(e) {
   e.preventDefault()
-  const text  = (e.clipboardData || window.clipboardData).getData('text').replace(/\D/g,'').substring(0, 6)
-  const cells = document.querySelectorAll('.code-cell')
-  text.split('').forEach((ch, i) => { if (cells[i]) { cells[i].value = ch; cells[i].classList.add('filled') } })
-  if (cells[text.length]) cells[text.length].focus()
-  else if (cells[5]) cells[5].focus()
+  const txt=(e.clipboardData||window.clipboardData).getData('text').replace(/\D/g,'').substring(0,6)
+  const cells=document.querySelectorAll('.code-cell')
+  txt.split('').forEach((ch,i)=>{if(cells[i]){cells[i].value=ch;cells[i].classList.add('filled')}})
+  if(cells[txt.length])cells[txt.length].focus(); else if(cells[5])cells[5].focus()
   autoSubmitIfFull()
 }
 function autoSubmitIfFull() {
-  const cells = document.querySelectorAll('.code-cell')
-  const code  = Array.from(cells).map(c => c.value).join('')
-  if (code.length === 6) setTimeout(doVerify, 120)
+  const code=Array.from(document.querySelectorAll('.code-cell')).map(c=>c.value).join('')
+  if(code.length===6) setTimeout(doVerify,120)
 }
 function getCode() { return Array.from(document.querySelectorAll('.code-cell')).map(c=>c.value).join('') }
 
 async function doVerify() {
-  const code = getCode()
-  if (code.length < 6) { document.getElementById('verr').textContent='6 haneli kodu girin'; document.getElementById('verr').classList.add('on'); return }
-  const btn = document.getElementById('vsub'); const sp = document.getElementById('vsp')
-  btn.disabled = true; sp.style.display = 'inline-block'
+  const code=getCode()
+  if(code.length<6){document.getElementById('verr').textContent='6 haneli kodu girin';document.getElementById('verr').classList.add('on');return}
+  const btn=document.getElementById('vsub'),sp=document.getElementById('vsp')
+  btn.disabled=true; sp.style.display='inline-block'
   try {
-    const r = await fetch('http://localhost:5001/api/verify', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({email: pendingVerifyEmail, code}) })
-    const d = await r.json()
-    if (!r.ok) {
-      document.getElementById('verr').textContent = d.detail || 'Kod hatalı'
-      document.getElementById('verr').classList.add('on')
-      document.querySelectorAll('.code-cell').forEach(c => { c.value=''; c.classList.remove('filled') })
-      document.querySelector('.code-cell').focus()
-      return
-    }
-    token = d.token; me = d.email
-    localStorage.setItem('paas_token', token)
-    localStorage.setItem('paas_email', me)
-    setUser(me)
-    toast('success', '✅ Hesap doğrulandı, hoş geldiniz!')
-    showPage('dashboard')
-    loadDeployments()
-  } catch(e) {
-    document.getElementById('verr').textContent = 'Sunucu hatası: ' + e.message
-    document.getElementById('verr').classList.add('on')
-  } finally {
-    btn.disabled = false; sp.style.display = 'none'
-  }
+    const r=await fetch('http://localhost:5001/api/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:pendingVerifyEmail,code})})
+    const d=await r.json()
+    if(!r.ok){document.getElementById('verr').textContent=d.detail||'Kod hatalı';document.getElementById('verr').classList.add('on');document.querySelectorAll('.code-cell').forEach(c=>{c.value='';c.classList.remove('filled')});document.querySelector('.code-cell').focus();return}
+    token=d.token;me=d.email
+    localStorage.setItem('paas_token',token);localStorage.setItem('paas_email',me)
+    setUser(me); toast('success','✅ Hesap doğrulandı!'); showPage('dashboard'); loadDeployments()
+  } catch(e){document.getElementById('verr').textContent='Sunucu hatası: '+e.message;document.getElementById('verr').classList.add('on')}
+  finally{btn.disabled=false;sp.style.display='none'}
 }
-
 async function resendCode() {
-  if (!pendingVerifyEmail) return
-  const email = pendingVerifyEmail
-  const pass  = document.getElementById('ap').value
+  if(!pendingVerifyEmail) return
   try {
-    const r = await fetch('http://localhost:5001/api/register', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({email, password: pass}) })
-    if (r.ok) toast('success', 'Kod tekrar gönderildi')
-    else toast('error', 'Gönderilemedi')
-  } catch { toast('error', 'Bağlantı hatası') }
+    const r=await fetch('http://localhost:5001/api/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:pendingVerifyEmail,password:document.getElementById('ap').value})})
+    r.ok ? toast('success','Kod tekrar gönderildi') : toast('error','Gönderilemedi')
+  } catch { toast('error','Bağlantı hatası') }
 }
 
-// ── User state ─────────────────────────────────────────────────────────────────
+// ── User ──────────────────────────────────────────────────────
 function setUser(u) {
-  me = u
-  document.getElementById('nun').textContent = u.includes('@') ? u.split('@')[0] : u
-  document.getElementById('nui').style.display = 'flex'
-  document.getElementById('nlg').style.display = 'flex'
-  document.getElementById('nli').style.display = 'none'
-  document.getElementById('nsu').style.display = 'none'
+  me=u
+  document.getElementById('nun').textContent=u.includes('@')?u.split('@')[0]:u
+  document.getElementById('nui').style.display='flex'
+  document.getElementById('nlg').style.display='flex'
+  document.getElementById('nli').style.display='none'
+  document.getElementById('nsu').style.display='none'
 }
 function logout() {
   clearToken()
-  document.getElementById('nui').style.display = 'none'
-  document.getElementById('nlg').style.display = 'none'
-  document.getElementById('nli').style.display = 'flex'
-  document.getElementById('nsu').style.display = 'flex'
-  showPage('home')
-  toast('success', 'Çıkış yapıldı')
+  document.getElementById('nui').style.display='none'
+  document.getElementById('nlg').style.display='none'
+  document.getElementById('nli').style.display='flex'
+  document.getElementById('nsu').style.display='flex'
+  closeDrawer(); showPage('home'); toast('success','Çıkış yapıldı')
 }
-function clearToken() { token=null; me=null; localStorage.removeItem('paas_token'); localStorage.removeItem('paas_email') }
+function clearToken(){token=null;me=null;localStorage.removeItem('paas_token');localStorage.removeItem('paas_email')}
 
-// ── Deploy ─────────────────────────────────────────────────────────────────────
-function dEnter(e) { if (e.key==='Enter') doDeploy() }
+// ── Deploy ────────────────────────────────────────────────────
+function dEnter(e){if(e.key==='Enter')doDeploy()}
 async function doDeploy() {
-  const p = document.getElementById('dp').value.trim()
-  const u = document.getElementById('du').value.trim()
-  if (!p) { shake('dp'); return } if (!u) { shake('du'); return }
-  const btn=document.getElementById('dbtn'); const sp=document.getElementById('dsp')
+  const p=document.getElementById('dp').value.trim()
+  const u=document.getElementById('du').value.trim()
+  if(!p){shake('dp');return} if(!u){shake('du');return}
+  const btn=document.getElementById('dbtn'),sp=document.getElementById('dsp')
   btn.disabled=true; sp.style.display='inline-block'
   try {
-    const r = await af('http://localhost:5001/api/deploy', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({project_name:p, github_url:u}) })
-    if (r.status===401) { toast('error','Oturum süresi doldu'); logout(); return }
-    const d = await r.json()
-    if (!r.ok) { toast('error', d.detail||'Deploy başlatılamadı'); return }
+    const r=await af('http://localhost:5001/api/deploy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({project_name:p,github_url:u})})
+    if(r.status===401){toast('error','Oturum süresi doldu');logout();return}
+    const d=await r.json()
+    if(!r.ok){toast('error',d.detail||'Deploy başlatılamadı');return}
     document.getElementById('dp').value=''; document.getElementById('du').value=''
-    rows.unshift({id:d.deploy_id, project_name:p, github_url:u, status:'Pending', subdomain:null, created_at:new Date().toISOString()})
-    renderTable(); pollDeploy(d.deploy_id); openDrawer(p)
-    toast('success', '🚀 "'+p+'" deploy başlatıldı')
-  } catch { toast('error', 'Bağlantı hatası') }
-  finally { btn.disabled=false; sp.style.display='none' }
+    const newRow={id:d.deploy_id,project_name:p,github_url:u,status:'Pending',subdomain:null,created_at:new Date().toISOString()}
+    rows.unshift(newRow); renderTable()
+    pollDeploy(d.deploy_id)
+    openDrawer(d.deploy_id, p, 'building')
+    toast('success','🚀 "'+p+'" deploy başlatıldı')
+  } catch{toast('error','Bağlantı hatası')}
+  finally{btn.disabled=false;sp.style.display='none'}
 }
-function shake(id) { const el=document.getElementById(id); el.classList.add('err'); setTimeout(()=>el.classList.remove('err'),1000) }
+function shake(id){const el=document.getElementById(id);el.classList.add('err');setTimeout(()=>el.classList.remove('err'),1000)}
 
-// ── Data ───────────────────────────────────────────────────────────────────────
+// ── Data ──────────────────────────────────────────────────────
 async function loadDeployments() {
   try {
-    const r = await af('http://localhost:5001/api/deployments'); if (!r.ok) return
-    rows = await r.json(); renderTable()
-    rows.filter(d=>d.status==='Pending'||d.status==='Building').forEach(d=>{ if (!polling.has(d.id)) pollDeploy(d.id) })
-  } catch {}
+    const r=await af('http://localhost:5001/api/deployments'); if(!r.ok)return
+    rows=await r.json(); renderTable()
+    rows.filter(d=>d.status==='Pending'||d.status==='Building').forEach(d=>{if(!polling.has(d.id))pollDeploy(d.id)})
+  } catch{}
 }
+
 async function pollDeploy(id) {
-  if (polling.has(id)) return; polling.add(id)
-  const p = async () => {
+  if(polling.has(id))return; polling.add(id)
+  const tick = async () => {
     try {
-      const r = await af('http://localhost:5001/api/status/'+id); if (!r.ok) { polling.delete(id); return }
-      const d = await r.json()
-      const i = rows.findIndex(x=>x.id===id); if (i!==-1) rows[i]=d
+      const r=await af('http://localhost:5001/api/status/'+id); if(!r.ok){polling.delete(id);return}
+      const d=await r.json()
+      const i=rows.findIndex(x=>x.id===id); if(i!==-1)rows[i]=d
       renderTable()
-      if (drawerProj) updateDrawer(d)
-      if (d.status==='Pending'||d.status==='Building') setTimeout(p,2000)
+      // Drawer bu deploy için açıksa güncelle
+      if(drawerDeployId===id) updateDrawer(d)
+      if(d.status==='Pending'||d.status==='Building') setTimeout(tick,2000)
       else {
         polling.delete(id)
-        if (d.status==='Running') toast('success','✅ "'+d.project_name+'" yayında!')
-        else if (d.status==='Failed') toast('error','❌ "'+d.project_name+'" başarısız')
+        if(d.status==='Running') toast('success','✅ "'+d.project_name+'" yayında!')
+        else if(d.status==='Failed') {
+          toast('error','❌ "'+d.project_name+'" başarısız')
+          // Failed olunca drawer açıksa son durumu göster
+          if(drawerDeployId===id) updateDrawer(d)
+        }
       }
-    } catch { polling.delete(id) }
-  }; p()
+    } catch{polling.delete(id)}
+  }; tick()
 }
+
 function renderTable() {
-  const t=rows.length, r=rows.filter(d=>d.status==='Running').length
-  const pend=rows.filter(d=>d.status==='Pending'||d.status==='Building').length, f=rows.filter(d=>d.status==='Failed').length
-  document.getElementById('kv-t').textContent=t; document.getElementById('kv-r').textContent=r
-  document.getElementById('kv-p').textContent=pend; document.getElementById('kv-f').textContent=f
+  const t=rows.length
+  const r=rows.filter(d=>d.status==='Running').length
+  const pend=rows.filter(d=>d.status==='Pending'||d.status==='Building').length
+  const f=rows.filter(d=>d.status==='Failed').length
+  document.getElementById('kv-t').textContent=t
+  document.getElementById('kv-r').textContent=r
+  document.getElementById('kv-p').textContent=pend
+  document.getElementById('kv-f').textContent=f
   document.getElementById('tcnt').textContent=t
-  document.getElementById('hs-total').textContent=t; document.getElementById('hs-running').textContent=r
+  document.getElementById('hs-total').textContent=t
+  document.getElementById('hs-running').textContent=r
   const b=document.getElementById('tbody')
-  if (!t) { b.innerHTML='<div class="empty"><div class="empty-ic">🚀</div><div class="empty-t">Henüz deploy yok</div><div class="empty-s">Yukarıdaki formu kullanarak ilk deployunuzu başlatın</div></div>'; return }
+  if(!t){b.innerHTML='<div class="empty"><div class="empty-ic">🚀</div><div class="empty-t">Henüz deploy yok</div><div class="empty-s">Yukarıdaki formu kullanarak ilk deployunuzu başlatın</div></div>';return}
   b.innerHTML=rows.map(d=>{
     const st=(d.status||'').toLowerCase()
     const dt=d.created_at?new Date(d.created_at).toLocaleString('tr-TR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—'
-    const link=d.subdomain?`<a href="http://${d.subdomain}:8090" target="_blank">↗ Aç</a>`:st==='running'?'...':'—'
-    const short=(d.github_url||'').replace('https://github.com/','').substring(0,30)
-    return`<div class="tr"><div class="tr-id">#${d.id}</div><div class="tr-name" title="${d.project_name}">${d.project_name}</div><div class="tr-url" title="${d.github_url}">${short}</div><div><span class="chip ${st}"><span class="chip-d"></span>${d.status}</span></div><div class="tr-time">${dt}</div><div class="tr-link">${link}</div></div>`
+    const short=(d.github_url||'').replace('https://github.com/','').substring(0,28)
+
+    // Aksiyonlar sütunu
+    const openBtn = d.subdomain
+      ? `<button class="act-btn act-open" onclick="window.open('http://${d.subdomain}:8090','_blank')" title="Uygulamayı aç">↗ Aç</button>`
+      : (st==='running' ? `<button class="act-btn act-open" disabled style="opacity:.4">↗ Aç</button>` : '')
+
+    const logBtn = `<button class="act-btn act-log" onclick="openDrawer(${d.id},'${d.project_name}','${st}')" title="Build loglarını gör">📋 Log</button>`
+
+    const delBtn = `<button class="act-btn act-del" onclick="openDeleteModal(${d.id},'${d.project_name}')" title="Sil">🗑</button>`
+
+    return `<div class="tr">
+      <div class="tr-id">#${d.id}</div>
+      <div class="tr-name" title="${d.project_name}">${d.project_name}</div>
+      <div class="tr-url" title="${d.github_url}">${short}</div>
+      <div><span class="chip ${st}"><span class="chip-d"></span>${d.status}</span></div>
+      <div class="tr-time">${dt}</div>
+      <div class="tr-actions">${openBtn}${logBtn}${delBtn}</div>
+    </div>`
   }).join('')
 }
 
-// ── Log drawer ─────────────────────────────────────────────────────────────────
-let drawerProj=null, drawerPhase=null
-function openDrawer(proj) {
-  drawerProj=proj; drawerPhase=null
-  document.getElementById('dl-proj').textContent=proj+' / build logs'
-  document.getElementById('dl-body').innerHTML='<span style="color:var(--text-3)">Pipeline başlatılıyor...</span>'
-  document.getElementById('drawer').classList.add('open')
+// ── LOG DRAWER ────────────────────────────────────────────────
+function ts() {
+  return `<span class="ll ts">[${new Date().toLocaleTimeString('tr-TR')}]</span> `
 }
-function updateDrawer(d) {
-  if (!drawerProj) return
-  const b=document.getElementById('dl-body')
-  if (d.status==='Pending'&&drawerPhase!=='pending') { drawerPhase='pending'; b.innerHTML='<div class="ll inf">→ git clone başlatılıyor...</div><div class="ll inf">→ docker build bekleniyor...</div>'; b.scrollTop=b.scrollHeight }
-  else if (d.status==='Running'&&drawerPhase!=='done') { drawerPhase='done'; b.innerHTML+=`<div class="ll ok">✓ Build tamamlandı</div><div class="ll ok">✓ Container başlatıldı → ${d.subdomain}</div>`; b.scrollTop=b.scrollHeight }
-  else if (d.status==='Failed'&&drawerPhase!=='fail') { drawerPhase='fail'; b.innerHTML+='<div class="ll er">✗ Build başarısız</div>'; b.scrollTop=b.scrollHeight }
-}
-function closeDrawer() { document.getElementById('drawer').classList.remove('open'); drawerProj=null }
 
-// ── Helpers ────────────────────────────────────────────────────────────────────
-function af(url, o={}) { o.headers=o.headers||{}; if(token) o.headers['Authorization']='Bearer '+token; return fetch(url,o) }
+function openDrawer(deployId, projName, status) {
+  drawerDeployId = deployId
+  document.getElementById('dl-proj').textContent = projName + ' / build logs'
+  setDrawerStatus(status)
+
+  const b = document.getElementById('dl-body')
+
+  // Eğer aktif build ise animasyonlu başlangıç
+  if(status === 'building' || status === 'pending') {
+    b.innerHTML = `
+      <span class="ll inf">${ts()}Pipeline başlatılıyor...</span>
+      <span class="ll inf">${ts()}git clone --depth 1 <repo> çalışıyor...</span>
+      <span class="ll inf">${ts()}docker build başlatılıyor, lütfen bekleyin...</span>
+    `
+  } else if(status === 'running') {
+    b.innerHTML = `
+      <span class="ll ok">${ts()}✓ Build tamamlandı</span>
+      <span class="ll ok">${ts()}✓ Container başlatıldı</span>
+      <span class="ll ok">${ts()}✓ Uygulama yayında</span>
+    `
+    // subdomain bilgisini rows'dan al
+    const row = rows.find(r=>r.id===deployId)
+    if(row && row.subdomain) {
+      b.innerHTML += `<span class="ll ok">${ts()}→ http://${row.subdomain}:8090</span>`
+    }
+  } else if(status === 'failed') {
+    b.innerHTML = `
+      <span class="ll warn">${ts()}Build logları:</span>
+      <span class="ll er">${ts()}✗ Build başarısız oldu</span>
+      <span class="ll er">${ts()}Olası nedenler:</span>
+      <span class="ll er">  · Repo'da Dockerfile yok veya hatalı</span>
+      <span class="ll er">  · GitHub token geçersiz ya da repo private</span>
+      <span class="ll er">  · Docker build hatası (bağımlılık sorunu)</span>
+      <span class="ll warn">${ts()}→ docker logs app-${rows.find(r=>r.id===deployId)?.project_name||''} ile detay görebilirsiniz</span>
+    `
+  } else {
+    b.innerHTML = `<span style="color:var(--text-3)">${ts()}Loglar yükleniyor...</span>`
+  }
+
+  b.scrollTop = b.scrollHeight
+  document.getElementById('drawer').classList.add('open')
+  document.getElementById('drawer').classList.add('normal')
+}
+
+function updateDrawer(d) {
+  if(drawerDeployId !== d.id) return
+  const b = document.getElementById('dl-body')
+  const st = (d.status||'').toLowerCase()
+  setDrawerStatus(st)
+
+  if(st === 'running') {
+    b.innerHTML += `<span class="ll ok">${ts()}✓ Build tamamlandı</span>`
+    b.innerHTML += `<span class="ll ok">${ts()}✓ Container başlatıldı → ${d.subdomain}</span>`
+    b.innerHTML += `<span class="ll ok">${ts()}✓ Uygulama yayında: http://${d.subdomain}:8090</span>`
+  } else if(st === 'failed') {
+    b.innerHTML += `<span class="ll er">${ts()}✗ Build başarısız oldu</span>`
+    b.innerHTML += `<span class="ll er">${ts()}Olası nedenler: Dockerfile hatası, geçersiz token, bağımlılık sorunu</span>`
+    b.innerHTML += `<span class="ll warn">${ts()}→ docker logs app-${d.project_name} ile detay görebilirsiniz</span>`
+  }
+  b.scrollTop = b.scrollHeight
+}
+
+function setDrawerStatus(st) {
+  const el = document.getElementById('dl-status')
+  el.className = 'drawer-status ' + st
+  const labels = {running:'Running',building:'Building',pending:'Pending',failed:'Failed','':''}
+  el.textContent = labels[st] || st
+}
+
+function closeDrawer() {
+  document.getElementById('drawer').classList.remove('open')
+  drawerDeployId = null
+}
+
+function toggleDrawerSize() {
+  const d = document.getElementById('drawer')
+  const btn = document.getElementById('expand-btn')
+  drawerExpanded = !drawerExpanded
+  d.classList.toggle('expanded', drawerExpanded)
+  d.classList.toggle('normal', !drawerExpanded)
+  btn.textContent = drawerExpanded ? '⬇' : '⬆'
+  btn.title = drawerExpanded ? 'Küçült' : 'Büyüt'
+}
+
+// ── SİLME MODALI ─────────────────────────────────────────────
+function openDeleteModal(id, name) {
+  pendingDeleteId = id
+  document.getElementById('del-proj-name').textContent = '"' + name + '"'
+  document.getElementById('del-modal').classList.add('open')
+}
+
+function closeDeleteModal() {
+  document.getElementById('del-modal').classList.remove('open')
+  pendingDeleteId = null
+}
+
+// Modal dışına tıklayınca kapat
+document.getElementById('del-modal').addEventListener('click', function(e) {
+  if(e.target === this) closeDeleteModal()
+})
+
+async function confirmDelete() {
+  if(!pendingDeleteId) return
+  const btn = document.getElementById('del-confirm-btn')
+  const sp  = document.getElementById('del-spin')
+  btn.disabled = true; sp.style.display = 'inline-block'
+  try {
+    const r = await af('http://localhost:5001/api/deployments/' + pendingDeleteId, {method:'DELETE'})
+    if(!r.ok) { const d=await r.json(); toast('error', d.detail||'Silinemedi'); return }
+    rows = rows.filter(x => x.id !== pendingDeleteId)
+    renderTable()
+    // Silineni drawer'da gösteriyorsa kapat
+    if(drawerDeployId === pendingDeleteId) closeDrawer()
+    toast('success', '🗑 Deploy silindi')
+    closeDeleteModal()
+  } catch { toast('error', 'Bağlantı hatası') }
+  finally { btn.disabled=false; sp.style.display='none' }
+}
+
+// ── Helpers ───────────────────────────────────────────────────
+function af(url, o={}) { o.headers=o.headers||{}; if(token)o.headers['Authorization']='Bearer '+token; return fetch(url,o) }
+
 function toast(type, msg) {
-  const c=document.getElementById('toasts'); const el=document.createElement('div')
+  const c=document.getElementById('toasts'), el=document.createElement('div')
   el.className='toast '+type
   el.innerHTML=`<span style="font-size:14px">${type==='success'?'✓':'✕'}</span><span>${msg}</span>`
   c.appendChild(el)
-  setTimeout(()=>{ el.style.animation='sOut .18s ease forwards'; setTimeout(()=>el.remove(),180) },3400)
+  setTimeout(()=>{el.style.animation='sOut .18s ease forwards';setTimeout(()=>el.remove(),180)},3400)
 }
+
 async function loadHomeStats() {
-  if (!token) { document.getElementById('hs-total').textContent='—'; document.getElementById('hs-running').textContent='—'; return }
-  try { const r=await af('http://localhost:5001/api/deployments'); if(!r.ok)return; const d=await r.json(); document.getElementById('hs-total').textContent=d.length; document.getElementById('hs-running').textContent=d.filter(x=>x.status==='Running').length } catch {}
+  document.getElementById('hs-total').textContent='—'
+  document.getElementById('hs-running').textContent='—'
+  if(!token) return
+  try {
+    const r=await af('http://localhost:5001/api/deployments'); if(!r.ok)return
+    const d=await r.json()
+    document.getElementById('hs-total').textContent=d.length
+    document.getElementById('hs-running').textContent=d.filter(x=>x.status==='Running').length
+  } catch{}
 }
 </script>
 </body>

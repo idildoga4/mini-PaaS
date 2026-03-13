@@ -212,10 +212,7 @@ async def register(req: RegisterRequest):
     conn.commit()
     conn.close()
 
-    # 2. DOĞRUDAN GİRİŞ: E-posta atmak yerine anında Token üretip arayüze gönderiyoruz.
-    # (Not: Eğer hata verirse, login fonksiyonuna bakıp access_token kısmını oradakiyle aynı yapabilirsin)
-    access_token = create_access_token({"sub": email})
-    
+    # 2. DOĞRUDAN GİRİŞ: Anında Token üret
     token = create_token(email)
     
     return {"token": token, "email": email, "message": "Kayıt başarılı"}
@@ -336,8 +333,57 @@ async def list_deployments(email: str = Depends(verify_token)):
     conn.close()
     return [dict(r) for r in rows]
 
+@app.delete("/api/deployments/{deploy_id}")
+async def delete_deployment(deploy_id: int, email: str = Depends(verify_token)):
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT * FROM deployments WHERE id=? AND user_email=?", (deploy_id, email)
+    ).fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Bulunamadı")
+    conn.execute("DELETE FROM deployments WHERE id=?", (deploy_id,))
+    conn.commit()
+    conn.close()
+    return {"message": "Silindi"}
+
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "api-gateway"}
+    """
+    Servis sağlık kontrolü — Docker Swarm healthcheck ve Prometheus tarafından kullanılır.
+    """
+    try:
+        conn = get_connection()
+        conn.execute("SELECT 1").fetchone()
+        conn.close()
+        db_status = "ok"
+    except Exception as e:
+        db_status = f"error: {str(e)}"
+
+    return {
+        "status": "ok" if db_status == "ok" else "degraded",
+        "service": "api-gateway",
+        "database": db_status
+    }
+
+@app.get("/metrics/summary")
+async def metrics_summary(email: str = Depends(verify_token)):
+    """
+    Dashboard için özet metrikler — kullanıcıya özel.
+    """
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT status, COUNT(*) as cnt FROM deployments WHERE user_email=? GROUP BY status",
+        (email,)
+    ).fetchall()
+    conn.close()
+
+    summary = {r["status"].lower(): r["cnt"] for r in rows}
+    return {
+        "total":    sum(summary.values()),
+        "running":  summary.get("running", 0),
+        "failed":   summary.get("failed", 0),
+        "pending":  summary.get("pending", 0) + summary.get("building", 0),
+    }
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
