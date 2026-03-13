@@ -1,7 +1,28 @@
 global:
-  scrape_interval: 5s
+  scrape_interval: 15s
+  evaluation_interval: 15s
 
 scrape_configs:
+
+  # Traefik — HTTP request sayıları, latency, router metrikleri
   - job_name: 'traefik'
     static_configs:
       - targets: ['traefik_proxy:8080']
+    metrics_path: /metrics
+
+  # API Gateway — canlılık kontrolü
+  - job_name: 'api-gateway'
+    static_configs:
+      - targets: ['paas_api:8000']
+    metrics_path: /health
+
+  # Builder Service — build pipeline sağlığı
+  - job_name: 'builder-service'
+    static_configs:
+      - targets: ['paas_builder:5000']
+    metrics_path: /health
+
+  # Prometheus kendini izliyor
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']

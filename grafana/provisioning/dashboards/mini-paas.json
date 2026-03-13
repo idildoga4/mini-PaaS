@@ -1,0 +1,90 @@
+{
+  "title": "Mini PaaS — Platform Overview",
+  "uid": "mini-paas-overview",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Traefik — Toplam HTTP İstek Sayısı",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "targets": [{
+        "expr": "sum(traefik_entrypoint_requests_total)",
+        "legendFormat": "Toplam İstek"
+      }],
+      "datasource": "Prometheus"
+    },
+    {
+      "id": 2,
+      "title": "Traefik — Aktif Bağlantılar",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "targets": [{
+        "expr": "sum(traefik_entrypoint_open_connections)",
+        "legendFormat": "Açık Bağlantı"
+      }],
+      "datasource": "Prometheus"
+    },
+    {
+      "id": 3,
+      "title": "Traefik — HTTP 4xx/5xx Hatalar",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "targets": [{
+        "expr": "sum(traefik_entrypoint_requests_total{code=~'4..|5..'})",
+        "legendFormat": "Hata Sayısı"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 10 },
+              { "color": "red", "value": 50 }
+            ]
+          }
+        }
+      },
+      "datasource": "Prometheus"
+    },
+    {
+      "id": 4,
+      "title": "Traefik — İstek Hızı (req/s)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "targets": [{
+        "expr": "sum(rate(traefik_entrypoint_requests_total[1m])) by (entrypoint)",
+        "legendFormat": "{{entrypoint}}"
+      }],
+      "datasource": "Prometheus"
+    },
+    {
+      "id": 5,
+      "title": "Traefik — Yanıt Süresi (ms)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "targets": [{
+        "expr": "histogram_quantile(0.95, sum(rate(traefik_entrypoint_request_duration_seconds_bucket[5m])) by (le)) * 1000",
+        "legendFormat": "p95 latency"
+      },{
+        "expr": "histogram_quantile(0.50, sum(rate(traefik_entrypoint_request_duration_seconds_bucket[5m])) by (le)) * 1000",
+        "legendFormat": "p50 latency"
+      }],
+      "datasource": "Prometheus"
+    },
+    {
+      "id": 6,
+      "title": "Traefik — Router Bazında İstekler",
+      "type": "bargauge",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 12 },
+      "targets": [{
+        "expr": "sum(traefik_router_requests_total) by (router)",
+        "legendFormat": "{{router}}"
+      }],
+      "datasource": "Prometheus"
+    }
+  ]
+}

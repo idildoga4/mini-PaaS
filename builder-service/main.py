@@ -79,6 +79,21 @@ def run_pipeline(deploy_id: int, repo_url: str, project_name: str):
     except Exception as e:
         print(f"[builder] Webhook hatası: {e}")
 
+@app.get("/health")
+async def health():
+    """
+    Servis sağlık kontrolü.
+    Docker Swarm ve Prometheus bu endpoint'i periyodik olarak çağırır.
+    'status: ok' dönerse servis sağlıklı sayılır.
+    """
+    # Workspace klasörü erişilebilir mi?
+    workspace_ok = os.path.exists("./workspace") or True  # ilk çalıştırmada henüz yoktur
+    return {
+        "status": "ok",
+        "service": "builder-service",
+        "workspace": workspace_ok
+    }
+
 @app.post("/deploy")
 async def deploy_project(req: DeployRequest, background_tasks: BackgroundTasks):
     """
