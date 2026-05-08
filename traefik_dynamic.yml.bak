@@ -21,11 +21,6 @@ http:
       - web
       rule: Host(`testapp.localhost`)
       service: testapp
-    testapp1:
-      entryPoints:
-      - web
-      rule: Host(`testapp1.localhost`)
-      service: testapp1
   services:
     dashboard-service:
       loadBalancer:
@@ -43,7 +38,3 @@ http:
       loadBalancer:
         servers:
         - url: http://app-testapp:80
-    testapp1:
-      loadBalancer:
-        servers:
-        - url: http://app-testapp1:80

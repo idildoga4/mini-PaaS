@@ -11,21 +11,26 @@ def on_rm_error(func, path, exc_info):
     func(path)
 
 
-def build_authenticated_url(repo_url: str) -> str:
-    # Koda gömdüğün token'ı buradan SİL, yerine sadece tırnak bırak
-    # Token'ı artık sadece .env veya docker-compose üzerinden alacağız
-    token = os.environ.get("GITHUB_TOKEN", "").strip()
+def build_authenticated_url(repo_url: str, user_token: str = "") -> str:
+    """
+    Token önceliği:
+      1. Kullanıcının OAuth token'ı (GitHub ile giriş yaptıysa)
+      2. Sistem GITHUB_TOKEN (.env dosyası)
+      3. Token yoksa URL'yi olduğu gibi bırak (public repo)
+    """
+    token = user_token.strip() or os.environ.get("GITHUB_TOKEN", "").strip()
 
     if not token:
-        print("[git] ⚠️ GITHUB_TOKEN bulunamadı!")
+        print("[git] ⚠️ Token bulunamadı — public repo olarak deneniyor")
         return repo_url
 
+    # Token loglanmasın — güvenlik
+    print("[git] Token ile kimlik doğrulama aktif")
     base_url = repo_url.replace("https://", "")
-    authenticated = f"https://oauth2:{token}@{base_url}"
-    return authenticated
+    return f"https://oauth2:{token}@{base_url}"
 
 
-def clone_repo(repo_url: str, project_name: str):
+def clone_repo(repo_url: str, project_name: str, user_token: str = ""):
     """
     GitHub reposunu ./workspace/<project_name> klasörüne klonlar.
 
@@ -43,10 +48,10 @@ def clone_repo(repo_url: str, project_name: str):
     # Eski klonu temizle — aynı proje tekrar deploy ediliyorsa
     if os.path.exists(project_path):
         print(f"[git] Eski '{project_name}' klasörü siliniyor...")
-        shutil.rmtree(project_path, onexc=on_rm_error)
+        shutil.rmtree(project_path, onerror=on_rm_error)
 
     # Token'ı URL'ye göm
-    authenticated_url = build_authenticated_url(repo_url)
+    authenticated_url = build_authenticated_url(repo_url, user_token)
 
     print(f"[git] Repo klonlanıyor: {project_name}")
 

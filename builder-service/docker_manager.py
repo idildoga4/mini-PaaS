@@ -1,3 +1,4 @@
+from asyncio import log
 import subprocess
 import os
 import yaml
@@ -114,6 +115,14 @@ def build_and_deploy(project_path: str, project_name: str) -> bool:
 
             # ── 3. Traefik'e subdomain kaydını ekle ───────────────
             update_traefik(router_name, container_name)
+
+            # Traefik'i restart et (Windows'ta file watch çalışmadığı için)
+            try:
+                subprocess.run(["docker", "restart", "traefik_proxy"],
+                                capture_output=True, timeout=30)
+                log(f"[+] Traefik yenilendi")
+            except Exception as e:
+                log(f"[!] Traefik restart başarısız: {e}")
 
             log(f"[+] SUCCESS! Uygulama yayında:")
             log(f"    http://{router_name}.localhost:8090")

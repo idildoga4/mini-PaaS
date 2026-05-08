@@ -100,6 +100,20 @@ services:
       - GF_USERS_ALLOW_SIGN_UP=false
     restart: unless-stopped
 
+  ngrok:
+    image: ngrok/ngrok:latest
+    container_name: paas_ngrok
+    environment:
+      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
+    command: http paas_api:8000 --log=stdout
+    networks:
+      - paas-net
+    ports:
+      - "4040:4040"
+    restart: unless-stopped
+    depends_on:
+      - api-gateway
+
 volumes:
   prometheus-data:
   grafana-data:

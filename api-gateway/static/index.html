@@ -143,7 +143,6 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);-webkit-font
 .tbl-title{font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:7px}
 .cnt{padding:1px 7px;background:var(--bg-3);border:1px solid var(--border);border-radius:100px;font-size:10.5px;color:var(--text-2);font-family:var(--mono)}
 
-/* Sütun düzeni: # | Proje | Repo | Durum | Tarih | Aksiyonlar */
 .th{display:grid;grid-template-columns:44px 150px 1fr 108px 90px 130px;padding:9px 18px;background:var(--bg-2);border-bottom:1px solid var(--border);font-size:10.5px;font-weight:500;color:var(--text-3);text-transform:uppercase;letter-spacing:.7px;font-family:var(--mono)}
 .tr{display:grid;grid-template-columns:44px 150px 1fr 108px 90px 130px;padding:0 18px;height:52px;align-items:center;border-bottom:1px solid var(--border);transition:background .12s;font-size:12.5px}
 .tr:last-child{border-bottom:none}.tr:hover{background:rgba(255,255,255,.02)}
@@ -152,7 +151,6 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);-webkit-font
 .tr-url{font-size:11.5px;color:var(--text-2);font-family:var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:8px}
 .tr-time{font-size:11px;color:var(--text-3);font-family:var(--mono)}
 
-/* Aksiyon butonları */
 .tr-actions{display:flex;align-items:center;gap:5px}
 .act-btn{display:inline-flex;align-items:center;justify-content:center;gap:4px;height:26px;padding:0 9px;border-radius:5px;font-size:11.5px;font-weight:500;cursor:pointer;border:none;transition:all .15s;white-space:nowrap;font-family:var(--sans)}
 .act-open{background:rgba(51,142,247,.1);color:var(--blue-2);border:1px solid rgba(51,142,247,.2)}.act-open:hover{background:rgba(51,142,247,.18);border-color:rgba(51,142,247,.4)}
@@ -229,6 +227,15 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);-webkit-font
     Mini PaaS
   </div>
   <div class="nav-r">
+    <button id="gh-connect-btn" class="btn btn-outline" onclick="connectGitHub()" style="display:none;gap:5px;font-size:11px;height:28px;padding:0 10px;white-space:nowrap">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+      GitHub Bağla
+    </button>
+    <div id="gh-badge" class="nav-user" style="display:none;cursor:pointer" onclick="disconnectGitHub()" title="GitHub bağlantısını kes">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+      <span class="nav-dot"></span>
+      GitHub bağlı
+    </div>
     <div id="nui" style="display:none" class="nav-user"><div class="nav-dot"></div><span id="nun"></span></div>
     <button id="nlg" style="display:none" class="btn btn-ghost" onclick="logout()">Çıkış</button>
     <button id="nli" class="btn btn-outline" onclick="showAuth('login')">Giriş Yap</button>
@@ -417,11 +424,19 @@ window.onload = async () => {
   if (token) {
     try {
       const r = await af('http://localhost:5001/api/me')
-      if (r.ok) { const d = await r.json(); setUser(d.email); showPage('dashboard'); loadDeployments(); return }
+      if (r.ok) {
+        const d = await r.json()
+        setUser(d.email)
+        showPage('dashboard')
+        loadDeployments()
+        checkGithubStatus()
+        return
+      }
     } catch {}
     clearToken()
   }
-  showPage('home'); loadHomeStats()
+  showPage('home')
+  loadHomeStats()
 }
 
 // ── Pages ─────────────────────────────────────────────────────
@@ -490,7 +505,9 @@ async function doAuth() {
     localStorage.setItem('paas_token',token); localStorage.setItem('paas_email',me)
     setUser(me)
     toast('success', curTab==='login' ? '👋 Hoş geldin!' : '🎉 Kayıt başarılı, hoş geldin!')
-    showPage('dashboard'); loadDeployments()
+    showPage('dashboard')
+    loadDeployments()
+    checkGithubStatus()   // Giriş sonrası GitHub durumunu kontrol et
   } catch(e) { showErr('Sunucuya bağlanılamadı: '+e.message) }
   finally { btn.disabled=false; sp.style.display='none' }
 }
@@ -576,6 +593,9 @@ function logout() {
   document.getElementById('nlg').style.display='none'
   document.getElementById('nli').style.display='flex'
   document.getElementById('nsu').style.display='flex'
+  // GitHub badge'i gizle
+  document.getElementById('gh-connect-btn').style.display='none'
+  document.getElementById('gh-badge').style.display='none'
   closeDrawer(); showPage('home'); toast('success','Çıkış yapıldı')
 }
 function clearToken(){token=null;me=null;localStorage.removeItem('paas_token');localStorage.removeItem('paas_email')}
@@ -621,7 +641,6 @@ async function pollDeploy(id) {
       const d=await r.json()
       const i=rows.findIndex(x=>x.id===id); if(i!==-1)rows[i]=d
       renderTable()
-      // Drawer bu deploy için açıksa güncelle
       if(drawerDeployId===id) updateDrawer(d)
       if(d.status==='Pending'||d.status==='Building') setTimeout(tick,2000)
       else {
@@ -629,7 +648,6 @@ async function pollDeploy(id) {
         if(d.status==='Running') toast('success','✅ "'+d.project_name+'" yayında!')
         else if(d.status==='Failed') {
           toast('error','❌ "'+d.project_name+'" başarısız')
-          // Failed olunca drawer açıksa son durumu göster
           if(drawerDeployId===id) updateDrawer(d)
         }
       }
@@ -655,16 +673,11 @@ function renderTable() {
     const st=(d.status||'').toLowerCase()
     const dt=d.created_at?new Date(d.created_at).toLocaleString('tr-TR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—'
     const short=(d.github_url||'').replace('https://github.com/','').substring(0,28)
-
-    // Aksiyonlar sütunu
     const openBtn = d.subdomain
       ? `<button class="act-btn act-open" onclick="window.open('http://${d.subdomain}:8090','_blank')" title="Uygulamayı aç">↗ Aç</button>`
       : (st==='running' ? `<button class="act-btn act-open" disabled style="opacity:.4">↗ Aç</button>` : '')
-
     const logBtn = `<button class="act-btn act-log" onclick="openDrawer(${d.id},'${d.project_name}','${st}')" title="Build loglarını gör">📋 Log</button>`
-
     const delBtn = `<button class="act-btn act-del" onclick="openDeleteModal(${d.id},'${d.project_name}')" title="Sil">🗑</button>`
-
     return `<div class="tr">
       <div class="tr-id">#${d.id}</div>
       <div class="tr-name" title="${d.project_name}">${d.project_name}</div>
@@ -681,48 +694,64 @@ function ts() {
   return `<span class="ll ts">[${new Date().toLocaleTimeString('tr-TR')}]</span> `
 }
 
-function openDrawer(deployId, projName, status) {
+async function openDrawer(deployId, projName, status) {
   drawerDeployId = deployId
   document.getElementById('dl-proj').textContent = projName + ' / build logs'
   setDrawerStatus(status)
-
   const b = document.getElementById('dl-body')
+  b.innerHTML = ''
+  document.getElementById('drawer').classList.add('open', 'normal')
 
-  // Eğer aktif build ise animasyonlu başlangıç
-  if(status === 'building' || status === 'pending') {
-    b.innerHTML = `
-      <span class="ll inf">${ts()}Pipeline başlatılıyor...</span>
-      <span class="ll inf">${ts()}git clone --depth 1 <repo> çalışıyor...</span>
-      <span class="ll inf">${ts()}docker build başlatılıyor, lütfen bekleyin...</span>
-    `
-  } else if(status === 'running') {
-    b.innerHTML = `
-      <span class="ll ok">${ts()}✓ Build tamamlandı</span>
-      <span class="ll ok">${ts()}✓ Container başlatıldı</span>
-      <span class="ll ok">${ts()}✓ Uygulama yayında</span>
-    `
-    // subdomain bilgisini rows'dan al
-    const row = rows.find(r=>r.id===deployId)
-    if(row && row.subdomain) {
-      b.innerHTML += `<span class="ll ok">${ts()}→ http://${row.subdomain}:8090</span>`
+  // Aktif build ise WebSocket ile gerçek log al
+  if (status === 'building' || status === 'pending') {
+    b.innerHTML = `<span class="ll inf">${ts()}WebSocket bağlanıyor...</span>`
+    const ws = new WebSocket(`ws://localhost:5000/ws/${projName.toLowerCase()}`)
+
+    ws.onopen = () => {
+      b.innerHTML = `<span class="ll inf">${ts()}Pipeline başlatıldı, loglar geliyor...</span>`
     }
-  } else if(status === 'failed') {
-    b.innerHTML = `
-      <span class="ll warn">${ts()}Build logları:</span>
-      <span class="ll er">${ts()}✗ Build başarısız oldu</span>
-      <span class="ll er">${ts()}Olası nedenler:</span>
-      <span class="ll er">  · Repo'da Dockerfile yok veya hatalı</span>
-      <span class="ll er">  · GitHub token geçersiz ya da repo private</span>
-      <span class="ll er">  · Docker build hatası (bağımlılık sorunu)</span>
-      <span class="ll warn">${ts()}→ docker logs app-${rows.find(r=>r.id===deployId)?.project_name||''} ile detay görebilirsiniz</span>
-    `
-  } else {
-    b.innerHTML = `<span style="color:var(--text-3)">${ts()}Loglar yükleniyor...</span>`
-  }
 
-  b.scrollTop = b.scrollHeight
-  document.getElementById('drawer').classList.add('open')
-  document.getElementById('drawer').classList.add('normal')
+    ws.onmessage = (e) => {
+      const line = e.data
+      let cls = 'inf'
+      if (line.startsWith('[+]') || line.includes('SUCCESS')) cls = 'ok'
+      else if (line.startsWith('[-]') || line.includes('error')) cls = 'er'
+      else if (line.startsWith('[!]')) cls = 'warn'
+      b.innerHTML += `<span class="ll ${cls}">${ts()}${line}</span>`
+      b.scrollTop = b.scrollHeight
+    }
+
+    ws.onerror = () => {
+      b.innerHTML += `<span class="ll warn">${ts()}WebSocket bağlantısı kurulamadı.</span>`
+    }
+
+    ws.onclose = () => {
+      b.innerHTML += `<span class="ll ts">${ts()}--- log stream sona erdi ---</span>`
+      b.scrollTop = b.scrollHeight
+    }
+
+  } else if (status === 'running' || status === 'failed') {
+    b.innerHTML = `<span class="ll ts">${ts()}Loglar yükleniyor...</span>`
+    try {
+      const r = await fetch(`http://localhost:5000/logs/${projName.toLowerCase()}`)
+      if (r.ok) {
+        const data = await r.json()
+        b.innerHTML = ''
+        data.lines.forEach(line => {
+          let cls = 'inf'
+          if (line.startsWith('[+]') || line.includes('SUCCESS')) cls = 'ok'
+          else if (line.startsWith('[-]') || line.includes('error') || line.includes('Error')) cls = 'er'
+          else if (line.startsWith('[!]')) cls = 'warn'
+          b.innerHTML += `<span class="ll ${cls}">${line}</span>`
+        })
+      } else {
+        b.innerHTML = `<span class="ll warn">${ts()}Log dosyası henüz mevcut değil.</span>`
+      }
+    } catch {
+      b.innerHTML = `<span class="ll warn">${ts()}Loglara ulaşılamadı.</span>`
+    }
+    b.scrollTop = b.scrollHeight
+  }
 }
 
 function updateDrawer(d) {
@@ -730,7 +759,6 @@ function updateDrawer(d) {
   const b = document.getElementById('dl-body')
   const st = (d.status||'').toLowerCase()
   setDrawerStatus(st)
-
   if(st === 'running') {
     b.innerHTML += `<span class="ll ok">${ts()}✓ Build tamamlandı</span>`
     b.innerHTML += `<span class="ll ok">${ts()}✓ Container başlatıldı → ${d.subdomain}</span>`
@@ -771,17 +799,13 @@ function openDeleteModal(id, name) {
   document.getElementById('del-proj-name').textContent = '"' + name + '"'
   document.getElementById('del-modal').classList.add('open')
 }
-
 function closeDeleteModal() {
   document.getElementById('del-modal').classList.remove('open')
   pendingDeleteId = null
 }
-
-// Modal dışına tıklayınca kapat
 document.getElementById('del-modal').addEventListener('click', function(e) {
   if(e.target === this) closeDeleteModal()
 })
-
 async function confirmDelete() {
   if(!pendingDeleteId) return
   const btn = document.getElementById('del-confirm-btn')
@@ -792,7 +816,6 @@ async function confirmDelete() {
     if(!r.ok) { const d=await r.json(); toast('error', d.detail||'Silinemedi'); return }
     rows = rows.filter(x => x.id !== pendingDeleteId)
     renderTable()
-    // Silineni drawer'da gösteriyorsa kapat
     if(drawerDeployId === pendingDeleteId) closeDrawer()
     toast('success', '🗑 Deploy silindi')
     closeDeleteModal()
@@ -822,6 +845,59 @@ async function loadHomeStats() {
     document.getElementById('hs-running').textContent=d.filter(x=>x.status==='Running').length
   } catch{}
 }
+
+// ── GitHub OAuth ──────────────────────────────────────────────
+
+// BUG #1 DÜZELTİLDİ: r.connected → (await r.json()).connected
+async function checkGithubStatus() {
+  if (!localStorage.getItem('paas_token')) return
+  try {
+    const r = await af('http://localhost:5001/api/github/status')
+    if (!r.ok) return
+    const data = await r.json()               // ← ÖNCEKİ HATANIN YERİ
+    const connected = data && data.connected
+    const btn = document.getElementById('gh-connect-btn')
+    const badge = document.getElementById('gh-badge')
+    if (btn) btn.style.display = connected ? 'none' : 'flex'
+    if (badge) badge.style.display = connected ? 'flex' : 'none'
+  } catch(e) {}
+}
+
+// BUG #2 DÜZELTİLDİ: r.redirect_url → (await r.json()).redirect_url
+async function connectGitHub() {
+  try {
+    const r = await af('http://localhost:5001/api/github/login')
+    if (!r.ok) { toast('error', 'GitHub bağlantısı başlatılamadı'); return }
+    const data = await r.json()               // ← ÖNCEKİ HATANIN YERİ
+    if (data && data.redirect_url) {
+      window.location.href = data.redirect_url
+    }
+  } catch(e) {
+    toast('error', 'GitHub bağlantısı başlatılamadı. Lütfen tekrar deneyin.')
+  }
+}
+
+async function disconnectGitHub() {
+  try {
+    const r = await af('http://localhost:5001/api/github/disconnect', { method: 'DELETE' })
+    if (r.ok) {
+      toast('success', 'GitHub bağlantısı kesildi')
+      checkGithubStatus()
+    }
+  } catch(e) {}
+}
+
+// BUG #3 DÜZELTİLDİ: getElementById('toast') → toast() fonksiyonu
+window.addEventListener('DOMContentLoaded', () => {
+  const params = new URLSearchParams(window.location.search)
+  if (params.get('github') === 'connected') {
+    window.history.replaceState({}, '', '/')
+    setTimeout(() => {
+      toast('success', '✓ GitHub hesabınız bağlandı')  // ← ÖNCEKİ HATANIN YERİ
+      checkGithubStatus()
+    }, 400)
+  }
+})
 </script>
 </body>
 </html>

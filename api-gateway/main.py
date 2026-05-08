@@ -1,5 +1,5 @@
 import httpx
-from fastapi import FastAPI, BackgroundTasks, HTTPException, Depends
+from fastapi import FastAPI, BackgroundTasks, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -20,7 +20,6 @@ ALGORITHM          = "HS256"
 TOKEN_EXPIRE_HOURS = 24
 CODE_EXPIRE_MINUTES = 15
 
-# SMTP (opsiyonel — boş bırakılırsa konsola yazar)
 SMTP_HOST = os.getenv("SMTP_HOST", "")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
 SMTP_USER = os.getenv("SMTP_USER", "")
@@ -33,36 +32,6 @@ app = FastAPI(title="Mini PaaS API Gateway")
 GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID")
 GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET")
 
-@app.get("/api/github/login")
-async def github_login():
-    # scope=repo çok önemli: private repoları okuma izni ister
-    url = f"https://github.com/login/oauth/authorize?client_id={GITHUB_CLIENT_ID}&scope=repo"
-    return {"redirect_url": url}
-
-# 2. GitHub'ın kullanıcıya onaylatıp geri gönderdiği rota
-@app.get("/api/github/callback")
-async def github_callback(code: str, email: str):
-    # Dönen kodu arka planda Client Secret ile token'a çeviriyoruz
-    async with httpx.AsyncClient() as client:
-        res = await client.post(
-            "https://github.com/login/oauth/access_token",
-            headers={"Accept": "application/json"},
-            data={
-                "client_id": GITHUB_CLIENT_ID,
-                "client_secret": GITHUB_CLIENT_SECRET,
-                "code": code
-            }
-        )
-        token_data = res.json()
-        user_github_token = token_data.get("access_token")
-
-    # Alınan token'ı veritabanında o kullanıcının satırına kaydet
-    conn = get_connection()
-    conn.execute("UPDATE users SET github_token=? WHERE email=?", (user_github_token, email))
-    conn.commit()
-    conn.close()
-
-    return {"message": "GitHub hesabınız başarıyla bağlandı"}
 os.makedirs("data", exist_ok=True)
 init_db()
 
@@ -96,7 +65,7 @@ class WebhookRequest(BaseModel):
     port:      int
     subdomain: str = ""
 
-# ─── Password (stdlib only — no bcrypt/passlib needed) ────────────────────────
+# ─── Password ─────────────────────────────────────────────────────────────────
 def hash_password(password: str) -> str:
     salt = secrets.token_hex(16)
     h    = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 260_000)
@@ -117,7 +86,6 @@ def validate_email(email: str) -> bool:
     return bool(EMAIL_RE.match(email.strip()))
 
 def validate_password(password: str) -> Optional[str]:
-    """None = geçerli. str = hata mesajı."""
     if len(password) < 8:
         return "Şifre en az 8 karakter olmalı"
     if not re.search(r'[A-Z]', password):
@@ -128,23 +96,10 @@ def validate_password(password: str) -> Optional[str]:
         return "En az bir rakam içermeli (0-9)"
     return None
 
-# ─── Email sending ─────────────────────────────────────────────────────────────
+# ─── Email ─────────────────────────────────────────────────────────────────────
 def send_verification_email(to_email: str, code: str):
     subject = f"Mini PaaS — Doğrulama Kodunuz: {code}"
-    body    = f"""Merhaba,
-
-Mini PaaS hesabınızı doğrulamak için aşağıdaki kodu kullanın:
-
-  ┌─────────────┐
-  │   {code}   │
-  └─────────────┘
-
-Bu kod {CODE_EXPIRE_MINUTES} dakika geçerlidir.
-
-E er bu isteği siz yapmadıysanız bu e-postayı görmezden gelin.
-
-— Mini PaaS Ekibi
-"""
+    body    = f"Doğrulama kodunuz: {code}\nBu kod {CODE_EXPIRE_MINUTES} dakika geçerlidir."
     if SMTP_HOST and SMTP_USER:
         try:
             msg = MIMEText(body, "plain", "utf-8")
@@ -155,16 +110,10 @@ E er bu isteği siz yapmadıysanız bu e-postayı görmezden gelin.
                 s.starttls()
                 s.login(SMTP_USER, SMTP_PASS)
                 s.sendmail(SMTP_FROM, [to_email], msg.as_string())
-            print(f"[Email] Doğrulama kodu gönderildi → {to_email}")
         except Exception as e:
             print(f"[Email] SMTP hatası: {e}")
     else:
-        # Geliştirme modunda konsola yaz
-        print(f"\n{'='*40}")
-        print(f"[DEV MODE] Doğrulama kodu")
-        print(f"  Email : {to_email}")
-        print(f"  Kod   : {code}")
-        print(f"{'='*40}\n")
+        print(f"\n{'='*40}\n[DEV MODE] Email: {to_email} | Kod: {code}\n{'='*40}\n")
 
 # ─── JWT ───────────────────────────────────────────────────────────────────────
 def create_token(email: str) -> str:
@@ -187,73 +136,49 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(bearer)) ->
 @app.post("/api/register")
 async def register(req: RegisterRequest):
     email = req.email.lower().strip()
-
     if not validate_email(email):
         raise HTTPException(status_code=400, detail="Geçerli bir e-posta adresi girin")
-
     pw_err = validate_password(req.password)
     if pw_err:
         raise HTTPException(status_code=400, detail=pw_err)
-
     conn = get_connection()
-    # Kullanıcı zaten var mı kontrolü
     if conn.execute("SELECT id FROM users WHERE email=?", (email,)).fetchone():
         conn.close()
         raise HTTPException(status_code=409, detail="Bu e-posta zaten kayıtlı")
-    
-    # 1. DOĞRUDAN KAYIT: Bekleme tablosunu sildik, direkt ana tabloya (users) ekliyoruz!
     hashed = hash_password(req.password)
     now = datetime.utcnow().isoformat()
-    
-    conn.execute("""
-        INSERT INTO users (email, password, created_at)
-        VALUES (?, ?, ?)
-    """, (email, hashed, now))
+    conn.execute("INSERT INTO users (email, password, created_at) VALUES (?, ?, ?)", (email, hashed, now))
     conn.commit()
     conn.close()
-
-    # 2. DOĞRUDAN GİRİŞ: Anında Token üret
     token = create_token(email)
-    
     return {"token": token, "email": email, "message": "Kayıt başarılı"}
 
 @app.post("/api/verify")
 async def verify(req: VerifyRequest):
     email = req.email.lower().strip()
     conn  = get_connection()
-    row   = conn.execute(
-        "SELECT * FROM pending_verifications WHERE email=?", (email,)
-    ).fetchone()
-
+    row   = conn.execute("SELECT * FROM pending_verifications WHERE email=?", (email,)).fetchone()
     if not row:
         conn.close()
-        raise HTTPException(status_code=404, detail="Bekleyen doğrulama bulunamadı. Tekrar kayıt olun.")
-
+        raise HTTPException(status_code=404, detail="Bekleyen doğrulama bulunamadı.")
     if datetime.utcnow() > datetime.fromisoformat(row["expires_at"]):
         conn.execute("DELETE FROM pending_verifications WHERE email=?", (email,))
         conn.commit()
         conn.close()
-        raise HTTPException(status_code=410, detail="Kodun süresi dolmuş. Tekrar kayıt olun.")
-
+        raise HTTPException(status_code=410, detail="Kodun süresi dolmuş.")
     if row["code"] != req.code.strip():
         conn.close()
         raise HTTPException(status_code=400, detail="Doğrulama kodu hatalı")
-
-    # Kodu doğru — kullanıcıyı aktif tabloya al
     try:
-        conn.execute(
-            "INSERT INTO users (email, password, created_at) VALUES (?, ?, ?)",
-            (email, row["password"], datetime.utcnow().isoformat())
-        )
+        conn.execute("INSERT INTO users (email, password, created_at) VALUES (?, ?, ?)",
+                     (email, row["password"], datetime.utcnow().isoformat()))
     except Exception:
-        pass  # Zaten kayıtlıysa geç
-
+        pass
     conn.execute("DELETE FROM pending_verifications WHERE email=?", (email,))
     conn.commit()
     conn.close()
-
     token = create_token(email)
-    return {"token": token, "email": email, "message": "Hesap doğrulandı, hoş geldiniz!"}
+    return {"token": token, "email": email, "message": "Hesap doğrulandı!"}
 
 @app.post("/api/login")
 async def login(req: LoginRequest):
@@ -261,10 +186,8 @@ async def login(req: LoginRequest):
     conn  = get_connection()
     row   = conn.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
     conn.close()
-
     if not row or not check_password(req.password, row["password"]):
         raise HTTPException(status_code=401, detail="E-posta veya şifre hatalı")
-
     token = create_token(email)
     return {"token": token, "email": email, "message": "Giriş başarılı"}
 
@@ -272,12 +195,76 @@ async def login(req: LoginRequest):
 async def me(email: str = Depends(verify_token)):
     return {"email": email}
 
+# ─── GitHub OAuth ──────────────────────────────────────────────────────────────
+@app.get("/api/github/login")
+async def github_login(email: str = Depends(verify_token)):
+    state = jwt.encode(
+        {"sub": email, "exp": datetime.utcnow() + timedelta(minutes=10)},
+        SECRET_KEY, algorithm=ALGORITHM
+    )
+    url = (
+        f"https://github.com/login/oauth/authorize"
+        f"?client_id={GITHUB_CLIENT_ID}"
+        f"&scope=repo"
+        f"&state={state}"
+    )
+    return {"redirect_url": url}
+
+@app.get("/api/github/callback")
+async def github_callback(code: str, state: str):
+    try:
+        payload = jwt.decode(state, SECRET_KEY, algorithms=[ALGORITHM])
+        email = payload.get("sub")
+        if not email:
+            raise HTTPException(status_code=400, detail="Geçersiz state")
+    except JWTError:
+        raise HTTPException(status_code=400, detail="State süresi dolmuş veya geçersiz.")
+    async with httpx.AsyncClient() as client:
+        res = await client.post(
+            "https://github.com/login/oauth/access_token",
+            headers={"Accept": "application/json"},
+            data={"client_id": GITHUB_CLIENT_ID, "client_secret": GITHUB_CLIENT_SECRET, "code": code}
+        )
+        token_data = res.json()
+    github_token = token_data.get("access_token")
+    if not github_token:
+        error = token_data.get("error_description", "Bilinmeyen hata")
+        raise HTTPException(status_code=400, detail=f"GitHub token alınamadı: {error}")
+    conn = get_connection()
+    conn.execute("UPDATE users SET github_token=? WHERE email=?", (github_token, email))
+    conn.commit()
+    conn.close()
+    print(f"[OAuth] GitHub bağlandı → {email}")
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="http://localhost:8090/?github=connected")
+
+@app.get("/api/github/status")
+async def github_status(email: str = Depends(verify_token)):
+    conn = get_connection()
+    row = conn.execute("SELECT github_token FROM users WHERE email=?", (email,)).fetchone()
+    conn.close()
+    connected = bool(row and row["github_token"])
+    return {"connected": connected}
+
+@app.delete("/api/github/disconnect")
+async def github_disconnect(email: str = Depends(verify_token)):
+    conn = get_connection()
+    conn.execute("UPDATE users SET github_token=NULL WHERE email=?", (email,))
+    conn.commit()
+    conn.close()
+    return {"message": "GitHub bağlantısı kesildi"}
+
 # ─── Deploy endpoints ──────────────────────────────────────────────────────────
-def trigger_builder(deploy_id: int, github_url: str, project_name: str):
+def trigger_builder(deploy_id: int, github_url: str, project_name: str, github_token: str = ""):
     try:
         r = http_requests.post(
             "http://builder-service:5000/deploy",
-            json={"deploy_id": deploy_id, "repo_url": github_url, "project_name": project_name},
+            json={
+                "deploy_id":    deploy_id,
+                "repo_url":     github_url,
+                "project_name": project_name,
+                "github_token": github_token
+            },
             timeout=10
         )
         print(f"[API Gateway] Builder: {r.status_code}")
@@ -291,6 +278,8 @@ def trigger_builder(deploy_id: int, github_url: str, project_name: str):
 @app.post("/api/deploy")
 async def deploy(req: DeployRequest, bg: BackgroundTasks, email: str = Depends(verify_token)):
     conn   = get_connection()
+    user   = conn.execute("SELECT github_token FROM users WHERE email=?", (email,)).fetchone()
+    github_token = (user["github_token"] or "") if user else ""
     cursor = conn.cursor()
     cursor.execute(
         "INSERT INTO deployments (user_email, project_name, github_url, status, created_at) VALUES (?,?,?,?,?)",
@@ -299,9 +288,10 @@ async def deploy(req: DeployRequest, bg: BackgroundTasks, email: str = Depends(v
     deploy_id = cursor.lastrowid
     conn.commit()
     conn.close()
-    bg.add_task(trigger_builder, deploy_id, req.github_url, req.project_name)
+    bg.add_task(trigger_builder, deploy_id, req.github_url, req.project_name, github_token)
     return {"deploy_id": deploy_id, "message": "Deployment başlatıldı"}
 
+# ─── Builder webhook (builder → api-gateway durum bildirimi) ───────────────────
 @app.post("/api/webhook")
 async def webhook(req: WebhookRequest):
     conn = get_connection()
@@ -311,8 +301,63 @@ async def webhook(req: WebhookRequest):
     )
     conn.commit()
     conn.close()
+    print(f"[webhook] Deploy #{req.deploy_id} güncellendi → {req.status}")
     return {"message": "Güncellendi"}
 
+# ─── GitHub push webhook (github → api-gateway push bildirimi) ────────────────
+@app.post("/api/github/webhook")
+async def github_webhook(request: Request):
+    secret = os.getenv("WEBHOOK_SECRET", "minipaas2025secret")
+    signature = request.headers.get("X-Hub-Signature-256", "")
+    body = await request.body()
+
+    mac = hmac.new(secret.encode(), body, hashlib.sha256)
+    expected = "sha256=" + mac.hexdigest()
+
+    if not hmac.compare_digest(signature, expected):
+        raise HTTPException(status_code=401, detail="Geçersiz webhook signature")
+
+    payload = await request.json()
+
+    if "commits" not in payload:
+        return {"message": "Push değil, atlandı"}
+
+    repo_url  = payload["repository"]["clone_url"]
+    repo_name = payload["repository"]["name"]
+    pusher    = payload["pusher"]["name"]
+
+    print(f"[webhook] Push alındı → {pusher} → {repo_url}")
+
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT * FROM deployments WHERE github_url LIKE ? ORDER BY id DESC LIMIT 1",
+        (f"%{repo_name}%",)
+    ).fetchone()
+    conn.close()
+
+    if not row:
+        return {"message": "Bu repo için deployment bulunamadı"}
+
+    conn = get_connection()
+    user = conn.execute("SELECT github_token FROM users WHERE email=?", (row["user_email"],)).fetchone()
+    github_token = (user["github_token"] or "") if user else ""
+    conn.close()
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO deployments (user_email, project_name, github_url, status, created_at) VALUES (?,?,?,?,?)",
+        (row["user_email"], row["project_name"], repo_url, "Pending", datetime.utcnow().isoformat())
+    )
+    deploy_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+
+    trigger_builder(deploy_id, repo_url, row["project_name"], github_token)
+
+    return {"message": "Redeploy başlatıldı", "deploy_id": deploy_id}
+
+# ─── Status & listing ──────────────────────────────────────────────────────────
 @app.get("/api/status/{deploy_id}")
 async def status(deploy_id: int, email: str = Depends(verify_token)):
     conn = get_connection()
@@ -347,11 +392,9 @@ async def delete_deployment(deploy_id: int, email: str = Depends(verify_token)):
     conn.close()
     return {"message": "Silindi"}
 
+# ─── Health & metrics ──────────────────────────────────────────────────────────
 @app.get("/health")
 async def health():
-    """
-    Servis sağlık kontrolü — Docker Swarm healthcheck ve Prometheus tarafından kullanılır.
-    """
     try:
         conn = get_connection()
         conn.execute("SELECT 1").fetchone()
@@ -359,7 +402,6 @@ async def health():
         db_status = "ok"
     except Exception as e:
         db_status = f"error: {str(e)}"
-
     return {
         "status": "ok" if db_status == "ok" else "degraded",
         "service": "api-gateway",
@@ -368,22 +410,18 @@ async def health():
 
 @app.get("/metrics/summary")
 async def metrics_summary(email: str = Depends(verify_token)):
-    """
-    Dashboard için özet metrikler — kullanıcıya özel.
-    """
     conn = get_connection()
     rows = conn.execute(
         "SELECT status, COUNT(*) as cnt FROM deployments WHERE user_email=? GROUP BY status",
         (email,)
     ).fetchall()
     conn.close()
-
     summary = {r["status"].lower(): r["cnt"] for r in rows}
     return {
-        "total":    sum(summary.values()),
-        "running":  summary.get("running", 0),
-        "failed":   summary.get("failed", 0),
-        "pending":  summary.get("pending", 0) + summary.get("building", 0),
+        "total":   sum(summary.values()),
+        "running": summary.get("running", 0),
+        "failed":  summary.get("failed", 0),
+        "pending": summary.get("pending", 0) + summary.get("building", 0),
     }
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")

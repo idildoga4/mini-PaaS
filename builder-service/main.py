@@ -22,6 +22,7 @@ class DeployRequest(BaseModel):
     deploy_id:    int   # Veritabanındaki kayıt ID'si — webhook geri bildirimi için
     repo_url:     str   # Klonlanacak GitHub URL'si
     project_name: str   # Docker image ve container'a verilecek isim
+    github_token: str = ""  # Kullanıcının OAuth token'ı (opsiyonel)
 
     def validate_repo_url(self):
         """
@@ -37,7 +38,7 @@ class DeployRequest(BaseModel):
         return url
 
 # 2. PİPELINE İŞLEMİ BİTİNCE HABER VERME EKLENDİ
-def run_pipeline(deploy_id: int, repo_url: str, project_name: str):
+def run_pipeline(deploy_id: int, repo_url: str, project_name: str, github_token: str = ""):
     """
     CI/CD pipeline'ının ana fonksiyonu. Sırayla şunları yapar:
       1. git clone  → repoyu ./workspace/<proje> klasörüne çeker
@@ -50,11 +51,16 @@ def run_pipeline(deploy_id: int, repo_url: str, project_name: str):
       Traefik bu etiketi okuyup yönlendirmeyi otomatik yapıyor.
       Yani http://test.localhost:8090 → app-test container'ına gidiyor.
     """
-    # router ismi: büyük harf ve alt çizgi yok (Traefik kuralı)
-    router_name = project_name.lower().replace("_", "-").replace(" ", "-")
+    # Proje adını temizle — boşluk, büyük harf, özel karakter kabul etmez
+    # "Test App" → "test-app", "My_Project" → "my-project"
+    import re
+    project_name = re.sub(r'[^a-z0-9-]', '-', project_name.lower().strip()).strip('-')
+    project_name = re.sub(r'-+', '-', project_name)  # çoklu tireyi tekleştir
+
+    router_name = project_name
     subdomain   = f"{router_name}.localhost"
 
-    project_path = clone_repo(repo_url, project_name)
+    project_path = clone_repo(repo_url, project_name, github_token)
     status = "Failed"  # varsayılan — build başarısız olursa bu kalır
 
     if project_path:
@@ -94,6 +100,17 @@ async def health():
         "workspace": workspace_ok
     }
 
+@app.get("/logs/{project_name}")
+async def get_logs(project_name: str):
+    import re
+    project_name = re.sub(r'[^a-z0-9-]', '-', project_name.lower().strip()).strip('-')
+    log_path = f"./workspace/{project_name}.log"
+    if not os.path.exists(log_path):
+        raise HTTPException(status_code=404, detail="Log dosyası bulunamadı")
+    with open(log_path, "r", encoding="utf-8") as f:
+        lines = f.readlines()
+    return {"lines": [l.strip() for l in lines if l.strip()]}
+
 @app.post("/deploy")
 async def deploy_project(req: DeployRequest, background_tasks: BackgroundTasks):
     """
@@ -112,7 +129,7 @@ async def deploy_project(req: DeployRequest, background_tasks: BackgroundTasks):
     # Adım 2: İşi arka plana al, hemen yanıt ver
     # BackgroundTasks: FastAPI'nin built-in async task sistemi
     # Bu sayede endpoint "200 OK" döndürür, build arkada devam eder
-    background_tasks.add_task(run_pipeline, req.deploy_id, req.repo_url, req.project_name)
+    background_tasks.add_task(run_pipeline, req.deploy_id, req.repo_url, req.project_name, req.github_token)
 
     return {
         "message":      f"{req.project_name} için deployment başlatıldı",
@@ -122,18 +139,34 @@ async def deploy_project(req: DeployRequest, background_tasks: BackgroundTasks):
 
 @app.websocket("/ws/{project_name}")
 async def websocket_endpoint(websocket: WebSocket, project_name: str):
-    # (Bu kısım önceki mesajdaki İngilizce haliyle tamamen aynı kalacak, dokunmana gerek yok)
     await websocket.accept()
     log_path = f"./workspace/{project_name.lower()}.log"
+
+    # Log dosyası oluşana kadar bekle (max 60 saniye)
+    waited = 0
     while not os.path.exists(log_path):
         await asyncio.sleep(0.5)
+        waited += 0.5
+        if waited >= 60:
+            await websocket.send_text("[!] Log dosyası bulunamadı, zaman aşımı.")
+            await websocket.close()
+            return
+
+    # Dosya açıkken satır satır oku, yeni satır gelince gönder
     with open(log_path, "r", encoding="utf-8") as f:
         while True:
             line = f.readline()
             if not line:
-                await asyncio.sleep(0.5)
+                # Yeni satır yok — build devam ediyor mu kontrol et
+                await asyncio.sleep(0.3)
                 continue
-            await websocket.send_text(line.strip())
-            if "SUCCESS!" in line or "error occurred" in line.lower():
+            line = line.strip()
+            if not line:
+                continue
+            await websocket.send_text(line)
+            # Build bitti sinyalleri
+            if "[SUCCESS!]" in line or "[error occurred]" in line.lower():
+                await asyncio.sleep(0.5)  # Son satırların iletilmesi için bekle
                 break
+
     await websocket.close()
