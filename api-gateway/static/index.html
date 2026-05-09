@@ -586,8 +586,10 @@ function setUser(u) {
   document.getElementById('nlg').style.display='flex'
   document.getElementById('nli').style.display='none'
   document.getElementById('nsu').style.display='none'
+  startAutoRefresh()
 }
 function logout() {
+  stopAutoRefresh()
   clearToken()
   document.getElementById('nui').style.display='none'
   document.getElementById('nlg').style.display='none'
@@ -633,6 +635,17 @@ async function loadDeployments() {
   } catch{}
 }
 
+// Her 5 saniyede otomatik yenile
+let _autoRefresh = null
+function startAutoRefresh() {
+  if (_autoRefresh) return
+  _autoRefresh = setInterval(() => { if (token) loadDeployments() }, 5000)
+}
+function stopAutoRefresh() {
+  clearInterval(_autoRefresh)
+  _autoRefresh = null
+}
+
 async function pollDeploy(id) {
   if(polling.has(id))return; polling.add(id)
   const tick = async () => {
@@ -673,7 +686,13 @@ function renderTable() {
     const st=(d.status||'').toLowerCase()
     const dt=d.created_at?new Date(d.created_at).toLocaleString('tr-TR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—'
     const short=(d.github_url||'').replace('https://github.com/','').substring(0,28)
-    const openBtn = d.subdomain
+    const openBtn = d.subdomain && st === 'running'
+    ? `<button class="act-btn act-open" onclick="window.open('http://${d.subdomain}:8090','_blank')" title="Uygulamayı aç">↗ Aç</button>`
+    : ''
+
+const stopBtn = st === 'running'
+    ? `<button class="act-btn act-log" onclick="stopDeploy(${d.id})" title="Durdur" style="background:rgba(243,18,96,.08);color:var(--red);border-color:rgba(243,18,96,.2)">⏹</button>`
+    : ''
       ? `<button class="act-btn act-open" onclick="window.open('http://${d.subdomain}:8090','_blank')" title="Uygulamayı aç">↗ Aç</button>`
       : (st==='running' ? `<button class="act-btn act-open" disabled style="opacity:.4">↗ Aç</button>` : '')
     const logBtn = `<button class="act-btn act-log" onclick="openDrawer(${d.id},'${d.project_name}','${st}')" title="Build loglarını gör">📋 Log</button>`
@@ -684,7 +703,7 @@ function renderTable() {
       <div class="tr-url" title="${d.github_url}">${short}</div>
       <div><span class="chip ${st}"><span class="chip-d"></span>${d.status}</span></div>
       <div class="tr-time">${dt}</div>
-      <div class="tr-actions">${openBtn}${logBtn}${delBtn}</div>
+      <div class="tr-actions">${openBtn}${stopBtn}${logBtn}${delBtn}</div>
     </div>`
   }).join('')
 }
@@ -764,10 +783,12 @@ function updateDrawer(d) {
     b.innerHTML += `<span class="ll ok">${ts()}✓ Container başlatıldı → ${d.subdomain}</span>`
     b.innerHTML += `<span class="ll ok">${ts()}✓ Uygulama yayında: http://${d.subdomain}:8090</span>`
   } else if(st === 'failed') {
-    b.innerHTML += `<span class="ll er">${ts()}✗ Build başarısız oldu</span>`
-    b.innerHTML += `<span class="ll er">${ts()}Olası nedenler: Dockerfile hatası, geçersiz token, bağımlılık sorunu</span>`
-    b.innerHTML += `<span class="ll warn">${ts()}→ docker logs app-${d.project_name} ile detay görebilirsiniz</span>`
-  }
+    // WebSocket zaten gerçek logları gösterdi, tekrar ekleme
+    if(!document.querySelector('.ll.er')) {
+        b.innerHTML += `<span class="ll er">${ts()}✗ Build başarısız oldu</span>`
+        b.innerHTML += `<span class="ll warn">${ts()}→ docker logs app-${d.project_name} ile detay görebilirsiniz</span>`
+    }
+}
   b.scrollTop = b.scrollHeight
 }
 
@@ -806,6 +827,16 @@ function closeDeleteModal() {
 document.getElementById('del-modal').addEventListener('click', function(e) {
   if(e.target === this) closeDeleteModal()
 })
+async function stopDeploy(id) {
+  try {
+    const r = await af(`http://localhost:5001/api/deployments/${id}/stop`, {method:'POST'})
+    if(!r.ok) { const d=await r.json(); toast('error', d.detail||'Durdurulamadı'); return }
+    const i = rows.findIndex(x=>x.id===id)
+    if(i!==-1) rows[i].status = 'Stopped'
+    renderTable()
+    toast('success', '⏹ Deployment durduruldu')
+  } catch { toast('error', 'Bağlantı hatası') }
+}
 async function confirmDelete() {
   if(!pendingDeleteId) return
   const btn = document.getElementById('del-confirm-btn')

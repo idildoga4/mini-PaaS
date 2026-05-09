@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import asyncio
 import os
 import requests
+import subprocess
 from git_manager import clone_repo
 from docker_manager import build_and_deploy
 
@@ -170,3 +171,31 @@ async def websocket_endpoint(websocket: WebSocket, project_name: str):
                 break
 
     await websocket.close()
+
+@app.post("/cleanup")
+async def cleanup(data: dict):
+    container_name = data.get("container_name", "")
+    image_name     = data.get("image_name", "")
+    if container_name:
+        subprocess.run(["docker", "rm", "-f", container_name],
+                       capture_output=True)
+    if image_name:
+        subprocess.run(["docker", "rmi", "-f", image_name],
+                       capture_output=True)
+    print(f"[cleanup] {container_name} ve {image_name} silindi")
+    return {"message": "Temizlendi"}
+
+@app.post("/stop")
+async def stop_container(data: dict):
+    container_name = data.get("container_name", "")
+    if not container_name:
+        raise HTTPException(status_code=400, detail="container_name gerekli")
+    result = subprocess.run(
+        ["docker", "stop", container_name],
+        capture_output=True, text=True
+    )
+    if result.returncode == 0:
+        print(f"[stop] {container_name} durduruldu")
+        return {"message": "Durduruldu"}
+    else:
+        raise HTTPException(status_code=500, detail=f"Durdurulamadı: {result.stderr}")

@@ -24,7 +24,6 @@ def build_authenticated_url(repo_url: str, user_token: str = "") -> str:
         print("[git] ⚠️ Token bulunamadı — public repo olarak deneniyor")
         return repo_url
 
-    # Token loglanmasın — güvenlik
     print("[git] Token ile kimlik doğrulama aktif")
     base_url = repo_url.replace("https://", "")
     return f"https://oauth2:{token}@{base_url}"
@@ -33,24 +32,18 @@ def build_authenticated_url(repo_url: str, user_token: str = "") -> str:
 def clone_repo(repo_url: str, project_name: str, user_token: str = ""):
     """
     GitHub reposunu ./workspace/<project_name> klasörüne klonlar.
-
-    Adımlar:
-    1. workspace klasörü yoksa oluştur
-    2. Aynı isimde eski klasör varsa sil (temiz başlangıç)
-    3. Token'lı URL ile git clone çalıştır
-    4. Başarılı → klasör yolunu döndür | Hatalı → None döndür
     """
     base_dir = "./workspace"
     os.makedirs(base_dir, exist_ok=True)
 
     project_path = os.path.join(base_dir, project_name)
+    log_path = os.path.join(base_dir, f"{project_name}.log")
 
-    # Eski klonu temizle — aynı proje tekrar deploy ediliyorsa
+    # Eski klonu temizle
     if os.path.exists(project_path):
         print(f"[git] Eski '{project_name}' klasörü siliniyor...")
         shutil.rmtree(project_path, onerror=on_rm_error)
 
-    # Token'ı URL'ye göm
     authenticated_url = build_authenticated_url(repo_url, user_token)
 
     print(f"[git] Repo klonlanıyor: {project_name}")
@@ -58,27 +51,44 @@ def clone_repo(repo_url: str, project_name: str, user_token: str = ""):
     try:
         result = subprocess.run(
             ["git", "clone", "--depth", "1", authenticated_url, project_path],
-            # --depth 1: sadece son commit'i al, tüm geçmişi değil
-            # Bu build'i çok daha hızlı yapar (büyük repolarda dakikalar kazanılır)
             capture_output=True,
             text=True,
-            timeout=120  # 2 dakika içinde bitmezse iptal et
+            timeout=120
         )
 
         if result.returncode == 0:
             print(f"[git] ✅ Başarıyla klonlandı: {project_path}")
             return project_path
         else:
-            # Hata mesajından token'ı temizle, sonra logla
+            # Token'ı log'dan gizle
             safe_err = result.stderr.replace(
                 os.environ.get("GITHUB_TOKEN", ""), "***"
             )
+            if user_token:
+                safe_err = safe_err.replace(user_token, "***")
+
             print(f"[git] ❌ Clone hatası:\n{safe_err}")
+
+            # Hata mesajını log dosyasına yaz (dashboard drawer'da görünsün)
+            with open(log_path, "w", encoding="utf-8") as f:
+                f.write(f"[git] ❌ Repo klonlanamadı:\n")
+                f.write(safe_err + "\n")
+                f.write("[error occurred]\n")
+
             return None
 
     except subprocess.TimeoutExpired:
-        print(f"[git] ❌ Zaman aşımı — 2 dakika içinde tamamlanamadı")
+        msg = "[git] ❌ Zaman aşımı — 2 dakika içinde tamamlanamadı"
+        print(msg)
+        with open(log_path, "w", encoding="utf-8") as f:
+            f.write(msg + "\n")
+            f.write("[error occurred]\n")
         return None
+
     except Exception as e:
-        print(f"[git] ❌ Beklenmeyen hata: {e}")
+        msg = f"[git] ❌ Beklenmeyen hata: {e}"
+        print(msg)
+        with open(log_path, "w", encoding="utf-8") as f:
+            f.write(msg + "\n")
+            f.write("[error occurred]\n")
         return None

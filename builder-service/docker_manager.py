@@ -78,6 +78,14 @@ def build_and_deploy(project_path: str, project_name: str) -> bool:
 
         log(f"\n[*] '{project_name}' için build başlatıldı...")
 
+        # Eski image varsa sil (yeni build öncesi temizlik)
+        log(f"[*] Eski image temizleniyor: {image_name}")
+        subprocess.run(
+            ["docker", "rmi", "-f", image_name],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+)
+
         try:
             # ── 1. Docker image build ─────────────────────────────
             log(f"[*] Image build ediliyor: {image_name}")

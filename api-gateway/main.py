@@ -280,6 +280,13 @@ async def deploy(req: DeployRequest, bg: BackgroundTasks, email: str = Depends(v
     conn   = get_connection()
     user   = conn.execute("SELECT github_token FROM users WHERE email=?", (email,)).fetchone()
     github_token = (user["github_token"] or "") if user else ""
+
+    # Aynı proje adına ait eski aktif deployment'ları durdur
+    conn.execute(
+        "UPDATE deployments SET status='Stopped' WHERE user_email=? AND LOWER(project_name)=LOWER(?) AND status IN ('Running','Pending','Building')",
+        (email, req.project_name)
+    )
+
     cursor = conn.cursor()
     cursor.execute(
         "INSERT INTO deployments (user_email, project_name, github_url, status, created_at) VALUES (?,?,?,?,?)",
@@ -344,6 +351,11 @@ async def github_webhook(request: Request):
     conn.close()
 
     conn = get_connection()
+    # Eski aktif deployment'ları durdur
+    conn.execute(
+        "UPDATE deployments SET status='Stopped' WHERE user_email=? AND LOWER(project_name)=LOWER(?) AND status IN ('Running','Pending','Building')",
+        (row["user_email"], row["project_name"])
+    )
     cursor = conn.cursor()
     cursor.execute(
         "INSERT INTO deployments (user_email, project_name, github_url, status, created_at) VALUES (?,?,?,?,?)",
@@ -387,10 +399,63 @@ async def delete_deployment(deploy_id: int, email: str = Depends(verify_token)):
     if not row:
         conn.close()
         raise HTTPException(status_code=404, detail="Bulunamadı")
+
+    project_name   = re.sub(r'[^a-z0-9-]', '-', row["project_name"].lower().strip()).strip('-')
+    container_name = f"app-{project_name}"
+    image_name     = f"{project_name}-img"
+
+    # Aynı proje adına ait başka aktif deployment var mı?
+    other = conn.execute(
+        "SELECT id FROM deployments WHERE user_email=? AND project_name=? AND id!=? AND status='Running'",
+        (email, row["project_name"], deploy_id)
+    ).fetchone()
+
     conn.execute("DELETE FROM deployments WHERE id=?", (deploy_id,))
     conn.commit()
     conn.close()
+
+    # Başka aktif deployment yoksa container ve image'ı sil
+    if not other:
+        try:
+            http_requests.post(
+                "http://builder-service:5000/cleanup",
+                json={"container_name": container_name, "image_name": image_name},
+                timeout=10
+            )
+        except Exception as e:
+            print(f"[cleanup] Builder'a ulaşılamadı: {e}")
+
     return {"message": "Silindi"}
+
+@app.post("/api/deployments/{deploy_id}/stop")
+async def stop_deployment(deploy_id: int, email: str = Depends(verify_token)):
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT * FROM deployments WHERE id=? AND user_email=?", (deploy_id, email)
+    ).fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Bulunamadı")
+    if row["status"] != "Running":
+        conn.close()
+        raise HTTPException(status_code=400, detail="Sadece çalışan deployment durdurulabilir")
+
+    project_name   = re.sub(r'[^a-z0-9-]', '-', row["project_name"].lower().strip()).strip('-')
+    container_name = f"app-{project_name}"
+
+    try:
+        http_requests.post(
+            "http://builder-service:5000/stop",
+            json={"container_name": container_name},
+            timeout=15
+        )
+    except Exception as e:
+        print(f"[stop] Builder'a ulaşılamadı: {e}")
+
+    conn.execute("UPDATE deployments SET status='Stopped' WHERE id=?", (deploy_id,))
+    conn.commit()
+    conn.close()
+    return {"message": "Durduruldu"}
 
 # ─── Health & metrics ──────────────────────────────────────────────────────────
 @app.get("/health")
