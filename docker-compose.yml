@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
 
-  # ── 1. TRAFİK POLİSİ ──────────────────────────────────────────
+  # ── 1. TRAEFIK ────────────────────────────────────────────────
   traefik:
     image: traefik:v2.10
     container_name: traefik_proxy
@@ -25,27 +25,80 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./traefik_dynamic.yml:/etc/traefik/dynamic.yml
 
-  # ── 2. API GATEWAY ────────────────────────────────────────────
-  api-gateway:
+  # ── 2. AUTH SERVICE ───────────────────────────────────────────
+  auth-service:
     env_file:
       - .env
-    build: ./api-gateway
-    container_name: paas_api
+    build: ./auth-service
+    container_name: paas_auth
     networks:
       - paas-net
     ports:
-      - "5001:8000"
+      - "5002:8001"
     volumes:
-      - ./api-gateway/data:/app/data
+      - ./auth-service/data:/app/data
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 15s
     restart: unless-stopped
 
-  # ── 3. BUILDER SERVİSİ ────────────────────────────────────────
+  # ── 3. DEPLOY SERVICE ─────────────────────────────────────────
+  deploy-service:
+    env_file:
+      - .env
+    build: ./deploy-service
+    container_name: paas_deploy
+    networks:
+      - paas-net
+    ports:
+      - "5003:8003"
+    volumes:
+      - ./deploy-service/data:/app/data
+    environment:
+      - AUTH_SERVICE_URL=http://auth-service:8001
+      - BUILDER_SERVICE_URL=http://builder-service:5000
+      - GITHUB_SERVICE_URL=http://github-service:8002
+    depends_on:
+      - auth-service
+      - builder-service
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8003/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+
+  # ── 4. GITHUB SERVICE ─────────────────────────────────────────
+  github-service:
+    env_file:
+      - .env
+    build: ./github-service
+    container_name: paas_github
+    networks:
+      - paas-net
+    ports:
+      - "5004:8002"
+    volumes:
+      - ./github-service/data:/app/data
+    environment:
+      - AUTH_SERVICE_URL=http://auth-service:8001
+      - DEPLOY_SERVICE_URL=http://deploy-service:8003
+    depends_on:
+      - auth-service
+      - deploy-service
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+
+  # ── 5. BUILDER SERVICE ────────────────────────────────────────
   builder-service:
     env_file:
       - .env
@@ -68,7 +121,7 @@ services:
       start_period: 15s
     restart: unless-stopped
 
-  # ── 4. PROMETHEUS ─────────────────────────────────────────────
+  # ── 6. PROMETHEUS ─────────────────────────────────────────────
   prometheus:
     image: prom/prometheus:latest
     container_name: paas_monitor
@@ -84,7 +137,7 @@ services:
       - "9090:9090"
     restart: unless-stopped
 
-  # ── 5. GRAFANA ────────────────────────────────────────────────
+  # ── 7. GRAFANA ────────────────────────────────────────────────
   grafana:
     image: grafana/grafana:latest
     container_name: paas_dashboard
@@ -100,19 +153,20 @@ services:
       - GF_USERS_ALLOW_SIGN_UP=false
     restart: unless-stopped
 
+  # ── 8. NGROK ──────────────────────────────────────────────────
   ngrok:
     image: ngrok/ngrok:latest
     container_name: paas_ngrok
     environment:
       - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
-    command: http paas_api:8000 --log=stdout
+    command: http github-service:8002 --log=stdout
     networks:
       - paas-net
     ports:
       - "4040:4040"
     restart: unless-stopped
     depends_on:
-      - api-gateway
+      - github-service
 
 volumes:
   prometheus-data:

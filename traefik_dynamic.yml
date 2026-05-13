@@ -1,49 +1,51 @@
 http:
   routers:
+    auth-router:
+      entryPoints:
+      - web
+      priority: 10
+      rule: Host(`localhost`) && (PathPrefix(`/api/register`) || PathPrefix(`/api/login`)
+        || PathPrefix(`/api/me`) || PathPrefix(`/api/auth`))
+      service: auth-service
     dashboard-router:
       entryPoints:
       - web
       priority: 1
       rule: Host(`localhost`)
-      service: dashboard-service
-    demo-app:
+      service: auth-service
+    deploy-router:
       entryPoints:
       - web
-      rule: Host(`demo-app.localhost`)
-      service: demo-app
-    test:
+      priority: 10
+      rule: Host(`localhost`) && (PathPrefix(`/api/deploy`) || PathPrefix(`/api/deployments`)
+        || PathPrefix(`/api/status`) || PathPrefix(`/api/webhook`) || PathPrefix(`/api/projects`)
+        || PathPrefix(`/api/internal`))
+      service: deploy-service
+    github-router:
       entryPoints:
       - web
-      rule: Host(`test.localhost`)
-      service: test
+      priority: 10
+      rule: Host(`localhost`) && PathPrefix(`/api/github`)
+      service: github-service
     testapp:
       entryPoints:
       - web
       rule: Host(`testapp.localhost`)
       service: testapp
-    testapp1:
-      entryPoints:
-      - web
-      rule: Host(`testapp1.localhost`)
-      service: testapp1
   services:
-    dashboard-service:
+    auth-service:
       loadBalancer:
         servers:
-        - url: http://paas_api:8000
-    demo-app:
+        - url: http://auth-service:8001
+    deploy-service:
       loadBalancer:
         servers:
-        - url: http://app-demo-app:80
-    test:
+        - url: http://deploy-service:8003
+    github-service:
       loadBalancer:
         servers:
-        - url: http://app-test:80
+        - url: http://github-service:8002
     testapp:
       loadBalancer:
         servers:
         - url: http://app-testapp:80
-    testapp1:
-      loadBalancer:
-        servers:
-        - url: http://app-testapp1:80
