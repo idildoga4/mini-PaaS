@@ -6,14 +6,14 @@ from pydantic import BaseModel
 from datetime import datetime, timedelta
 from jose import JWTError, jwt
 import hashlib, hmac, httpx, os
-
+from secrets_helper import get_secret
 from database import init_db, get_connection
 
-SECRET_KEY            = os.getenv("JWT_SECRET", "mini-paas-secret-2025-xK9")
+SECRET_KEY           = get_secret("jwt_secret",            "JWT_SECRET")
 ALGORITHM             = "HS256"
 GITHUB_CLIENT_ID      = os.getenv("GITHUB_CLIENT_ID")
-GITHUB_CLIENT_SECRET  = os.getenv("GITHUB_CLIENT_SECRET")
-WEBHOOK_SECRET        = os.getenv("WEBHOOK_SECRET", "minipaas2025secret")
+GITHUB_CLIENT_SECRET = get_secret("github_client_secret",  "GITHUB_CLIENT_SECRET")
+WEBHOOK_SECRET       = get_secret("webhook_secret",        "WEBHOOK_SECRET")
 DEPLOY_SERVICE_URL    = os.getenv("DEPLOY_SERVICE_URL", "http://deploy-service:8003")
 AUTH_SERVICE_URL      = os.getenv("AUTH_SERVICE_URL", "http://auth-service:8001")
 

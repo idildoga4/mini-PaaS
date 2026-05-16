@@ -1,9 +1,25 @@
 version: '3.8'
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Mini PaaS — Docker Swarm Stack
+# Kullanim: docker stack deploy -c docker-stack.yml mini-paas
+# ─────────────────────────────────────────────────────────────────────────────
+
+secrets:
+  jwt_secret:
+    external: true
+  webhook_secret:
+    external: true
+  github_client_secret:
+    external: true
+  ngrok_authtoken:
+    external: true
+
 services:
+
+  # ── 1. TRAEFIK ────────────────────────────────────────────────
   traefik:
     image: traefik:v2.10
-    container_name: traefik_proxy
     networks:
       - paas-net
     command:
@@ -22,32 +38,131 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./traefik_dynamic.yml:/etc/traefik/dynamic.yml
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
 
-  api-gateway:
-    env_file:
-      - .env
-    build: ./api-gateway
-    container_name: paas_api
+  # ── 2. AUTH SERVICE ───────────────────────────────────────────
+  auth-service:
+    build: ./auth-service
+    # NOT: Swarm'da build desteklenmez; onceden image build edip push etmek gerekir.
+    # Simdilik gelistirme asamasinda docker-compose ile build, stack ile deploy yapilabilir.
+    # Veya: image: localhost:5001/auth-service:latest (local registry ile)
+    image: mini-paas/auth-service:latest
     networks:
       - paas-net
     ports:
-      - "5001:8000"
+      - "5002:8001"
     volumes:
-      - ./api-gateway/data:/app/data
+      - auth-data:/app/data
+    environment:
+      - AUTH_SERVICE_URL=http://auth-service:8001
+    secrets:
+      - jwt_secret
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 15s
-    restart: unless-stopped
+    deploy:
+      replicas: 2
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
 
-  
+  # ── 3. DEPLOY SERVICE ─────────────────────────────────────────
+  deploy-service:
+    image: mini-paas/deploy-service:latest
+    networks:
+      - paas-net
+    ports:
+      - "5003:8003"
+    volumes:
+      - deploy-data:/app/data
+    environment:
+      - AUTH_SERVICE_URL=http://auth-service:8001
+      - BUILDER_SERVICE_URL=http://builder-service:5000
+      - GITHUB_SERVICE_URL=http://github-service:8002
+      - REDIS_URL=redis://redis:6379
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID:-}
+    secrets:
+      - jwt_secret
+      - webhook_secret
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8003/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    deploy:
+      replicas: 2
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+
+  # ── 4. GITHUB SERVICE ─────────────────────────────────────────
+  github-service:
+    image: mini-paas/github-service:latest
+    networks:
+      - paas-net
+    ports:
+      - "5004:8002"
+    volumes:
+      - github-data:/app/data
+    environment:
+      - AUTH_SERVICE_URL=http://auth-service:8001
+      - DEPLOY_SERVICE_URL=http://deploy-service:8003
+      - REDIS_URL=redis://redis:6379
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID:-}
+    secrets:
+      - jwt_secret
+      - github_client_secret
+      - webhook_secret
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    deploy:
+      replicas: 2
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+
+  # ── 5. BUILDER SERVICE ────────────────────────────────────────
+  # replicas: 1 — Docker socket erisimi ve traefik_dynamic.yml yazma
+  # islemi tek node'da olmali; birden fazla replica race condition olusturur.
   builder-service:
-    env_file:
-      - .env
-    build: ./builder-service
-    container_name: paas_builder
+    image: mini-paas/builder-service:latest
     ports:
       - "5000:5000"
     networks:
@@ -63,11 +178,50 @@ services:
       timeout: 10s
       retries: 3
       start_period: 15s
-    restart: unless-stopped
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
 
+  # ── 6. REDIS ──────────────────────────────────────────────────
+  # Circuit breaker state ve token cache icin.
+  # deploy-service ve github-service bu servisi kullanir.
+  redis:
+    image: redis:7-alpine
+    networks:
+      - paas-net
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+
+  # ── 7. PROMETHEUS ─────────────────────────────────────────────
   prometheus:
     image: prom/prometheus:latest
-    container_name: paas_monitor
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
@@ -78,12 +232,20 @@ services:
       - paas-net
     ports:
       - "9090:9090"
-    restart: unless-stopped
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
 
-
+  # ── 8. GRAFANA ────────────────────────────────────────────────
   grafana:
     image: grafana/grafana:latest
-    container_name: paas_dashboard
     networks:
       - paas-net
     ports:
@@ -94,13 +256,45 @@ services:
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
       - GF_USERS_ALLOW_SIGN_UP=false
-    restart: unless-stopped
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+
+# ── 9. NGROK ──────────────────────────────────────────────────
+  ngrok:
+    image: ngrok/ngrok:latest
+    environment:
+      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
+    command: http github-service:8002 --log=stdout
+    networks:
+      - paas-net
+    ports:
+      - "4040:4040"
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
 
 volumes:
   prometheus-data:
   grafana-data:
+  redis-data:
+  auth-data:
+  deploy-data:
+  github-data:
 
 networks:
   paas-net:
-    name: paas-net
-    driver: bridge
+    driver: overlay
+    attachable: true
+    # attachable: true olmali — builder deploy edilen app container'larini
+    # bu ag'a bagliyor. Olmasa app container'lari Traefik'e ulasalamaz.

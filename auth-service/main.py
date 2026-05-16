@@ -7,10 +7,11 @@ from datetime import datetime, timedelta
 from jose import JWTError, jwt
 import hashlib, hmac, secrets, base64, re, os
 from typing import Optional
+from secrets_helper import get_secret
 
 from database import init_db, get_connection
 
-SECRET_KEY         = os.getenv("JWT_SECRET", "mini-paas-secret-2025-xK9")
+SECRET_KEY = get_secret("jwt_secret", "JWT_SECRET")
 ALGORITHM          = "HS256"
 TOKEN_EXPIRE_HOURS = 24
 
