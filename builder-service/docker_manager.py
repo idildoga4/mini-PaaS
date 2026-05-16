@@ -9,6 +9,44 @@ _traefik_lock = threading.Lock()
 
 DYNAMIC_YML = "/etc/traefik/dynamic.yml"
 
+# Swarm stack deploy edilince network adı "mini-paas_paas-net" olur.
+# docker-compose ile çalışıyorsa "paas-net" kalır.
+# PAAS_NETWORK env variable ile override edilebilir.
+def get_paas_network() -> str:
+    if os.getenv("PAAS_NETWORK"):
+        return os.getenv("PAAS_NETWORK")
+    result = subprocess.run(
+        ["docker", "network", "ls", "--filter", "name=paas-net", "--format", "{{.Name}}"],
+        capture_output=True, text=True
+    )
+    networks = [n.strip() for n in result.stdout.strip().splitlines() if "paas-net" in n]
+    # "mini-paas_paas-net" varsa onu tercih et, yoksa "paas-net" kullan
+    for n in networks:
+        if "_paas-net" in n:
+            return n
+    return networks[0] if networks else "paas-net"
+
+
+def get_traefik_container_id() -> str:
+    """
+    Swarm'da container adı 'mini-paas_traefik.1.xxxxx' formatında olur,
+    sabit 'traefik_proxy' adı artık geçerli değil.
+    docker ps ile gerçek container ID'sini bul.
+    """
+    result = subprocess.run(
+        ["docker", "ps", "-q", "--filter", "name=mini-paas_traefik"],
+        capture_output=True, text=True
+    )
+    container_id = result.stdout.strip()
+    if not container_id:
+        # docker-compose ile çalışıyorsa eski adı dene
+        result = subprocess.run(
+            ["docker", "ps", "-q", "--filter", "name=traefik_proxy"],
+            capture_output=True, text=True
+        )
+        container_id = result.stdout.strip()
+    return container_id
+
 
 def update_traefik(router_name: str, container_name: str):
     """
@@ -55,6 +93,34 @@ def update_traefik(router_name: str, container_name: str):
         print(f"[traefik] ✅ Routing eklendi: {router_name}.localhost → {container_name}")
 
 
+def restart_traefik():
+    """
+    Swarm modunda Traefik container'ını yeniden başlatır.
+
+    NEDEN GEREKİYOR?
+    Windows'ta --providers.file.watch=true çalışmadığı için
+    traefik_dynamic.yml değişince Traefik'i manuel restart etmek gerekiyor.
+
+    SWARM FARKI:
+    docker-compose'da container adı sabitti: 'traefik_proxy'
+    Swarm'da container adı dinamik: 'mini-paas_traefik.1.xxxxx'
+    Bu yüzden önce gerçek container ID'sini buluyoruz.
+    """
+    container_id = get_traefik_container_id()
+    if not container_id:
+        print("[!] Traefik container bulunamadı, restart atlandı")
+        return
+
+    try:
+        subprocess.run(
+            ["docker", "restart", container_id],
+            capture_output=True, timeout=30
+        )
+        print(f"[+] Traefik yenilendi (container: {container_id[:12]})")
+    except Exception as e:
+        print(f"[!] Traefik restart başarısız: {e}")
+
+
 def build_and_deploy(project_path: str, project_name: str) -> bool:
     """
     3 adımda deploy:
@@ -84,7 +150,7 @@ def build_and_deploy(project_path: str, project_name: str) -> bool:
             ["docker", "rmi", "-f", image_name],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL
-)
+        )
 
         try:
             # ── 1. Docker image build ─────────────────────────────
@@ -104,12 +170,13 @@ def build_and_deploy(project_path: str, project_name: str) -> bool:
                 stderr=subprocess.DEVNULL
             )
 
-            log(f"[*] Container başlatılıyor: {container_name}")
+            paas_network = get_paas_network()
+            log(f"[*] Container başlatılıyor: {container_name} (network: {paas_network})")
             subprocess.run(
                 [
                     "docker", "run", "-d",
                     "--name",    container_name,
-                    "--network", "paas-net",
+                    "--network", paas_network,
                     # NOT: -l (label) etiketleri artık işe yaramıyor çünkü
                     # Docker provider kapalı. Traefik routing'i update_traefik()
                     # fonksiyonu ile traefik_dynamic.yml üzerinden yapıyoruz.
@@ -125,12 +192,8 @@ def build_and_deploy(project_path: str, project_name: str) -> bool:
             update_traefik(router_name, container_name)
 
             # Traefik'i restart et (Windows'ta file watch çalışmadığı için)
-            try:
-                subprocess.run(["docker", "restart", "traefik_proxy"],
-                                capture_output=True, timeout=30)
-                log(f"[+] Traefik yenilendi")
-            except Exception as e:
-                log(f"[!] Traefik restart başarısız: {e}")
+            # Swarm'da container adı dinamik olduğu için get_traefik_container_id() kullanıyoruz
+            restart_traefik()
 
             log(f"[+] SUCCESS! Uygulama yayında:")
             log(f"    http://{router_name}.localhost:8090")
