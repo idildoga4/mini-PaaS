@@ -8,6 +8,7 @@ from jose import JWTError, jwt
 import hashlib, hmac, httpx, os
 from secrets_helper import get_secret
 from database import init_db, get_connection
+from circuit_breaker import verify_token_with_circuit_breaker
 
 SECRET_KEY           = get_secret("jwt_secret",            "JWT_SECRET")
 ALGORITHM             = "HS256"
@@ -25,20 +26,12 @@ init_db()
 
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
-# ─── Auth (Auth Service'e sor) ────────────────────────────────
+# ─── Auth (circuit breaker ile) ───────────────────────────────
 async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(bearer)) -> str:
-    try:
-        async with httpx.AsyncClient() as client:
-            r = await client.get(
-                f"{AUTH_SERVICE_URL}/api/auth/verify",
-                headers={"Authorization": f"Bearer {credentials.credentials}"},
-                timeout=5
-            )
-            if r.status_code == 200:
-                return r.json()["email"]
-    except Exception:
-        pass
-    raise HTTPException(status_code=401, detail="Token geçersiz")
+    return await verify_token_with_circuit_breaker(
+        credentials.credentials,
+        AUTH_SERVICE_URL
+    )
 
 # ─── Endpoints ────────────────────────────────────────────────
 @app.get("/api/github/login")

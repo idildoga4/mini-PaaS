@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from datetime import datetime
 import requests as http_requests
 import httpx, re, os
+from circuit_breaker import verify_token_with_circuit_breaker
 
 from database import init_db, get_connection
 
@@ -32,19 +33,12 @@ class WebhookRequest(BaseModel):
     subdomain: str = ""
 
 # ─── Auth ─────────────────────────────────────────────────────
+# ─── Auth ─────────────────────────────────────────────────────
 async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(bearer)) -> str:
-    try:
-        async with httpx.AsyncClient() as client:
-            r = await client.get(
-                f"{AUTH_SERVICE_URL}/api/auth/verify",
-                headers={"Authorization": f"Bearer {credentials.credentials}"},
-                timeout=5
-            )
-            if r.status_code == 200:
-                return r.json()["email"]
-    except Exception:
-        pass
-    raise HTTPException(status_code=401, detail="Token geçersiz")
+    return await verify_token_with_circuit_breaker(
+        credentials.credentials,
+        AUTH_SERVICE_URL
+    )
 
 # ─── GitHub token al ──────────────────────────────────────────
 async def get_github_token(email: str) -> str:

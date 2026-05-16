@@ -3,3 +3,4 @@ uvicorn
 requests
 python-jose[cryptography]
 httpx
+redis==5.0.8
