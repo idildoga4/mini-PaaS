@@ -9,10 +9,13 @@ _traefik_lock = threading.Lock()
 
 DYNAMIC_YML = "/etc/traefik/dynamic.yml"
 
-# Swarm stack deploy edilince network adı "mini-paas_paas-net" olur.
-# docker-compose ile çalışıyorsa "paas-net" kalır.
-# PAAS_NETWORK env variable ile override edilebilir.
+
 def get_paas_network() -> str:
+    """
+    Swarm stack deploy edilince network adı "mini-paas_paas-net" olur.
+    docker-compose ile çalışıyorsa "paas-net" kalır.
+    PAAS_NETWORK env variable ile override edilebilir.
+    """
     if os.getenv("PAAS_NETWORK"):
         return os.getenv("PAAS_NETWORK")
     result = subprocess.run(
@@ -20,7 +23,6 @@ def get_paas_network() -> str:
         capture_output=True, text=True
     )
     networks = [n.strip() for n in result.stdout.strip().splitlines() if "paas-net" in n]
-    # "mini-paas_paas-net" varsa onu tercih et, yoksa "paas-net" kullan
     for n in networks:
         if "_paas-net" in n:
             return n
@@ -31,7 +33,6 @@ def get_traefik_container_id() -> str:
     """
     Swarm'da container adı 'mini-paas_traefik.1.xxxxx' formatında olur,
     sabit 'traefik_proxy' adı artık geçerli değil.
-    docker ps ile gerçek container ID'sini bul.
     """
     result = subprocess.run(
         ["docker", "ps", "-q", "--filter", "name=mini-paas_traefik"],
@@ -39,7 +40,6 @@ def get_traefik_container_id() -> str:
     )
     container_id = result.stdout.strip()
     if not container_id:
-        # docker-compose ile çalışıyorsa eski adı dene
         result = subprocess.run(
             ["docker", "ps", "-q", "--filter", "name=traefik_proxy"],
             capture_output=True, text=True
@@ -52,35 +52,33 @@ def update_traefik(router_name: str, container_name: str):
     """
     Deploy edilen uygulamayı Traefik'e kayıt eder.
 
-    NEDEN BUNU YAPIYORUZ?
-    Docker provider (--providers.docker) Windows'ta sorunlu olduğu için
-    kapattık. Bunun yerine traefik_dynamic.yml dosyasını elle güncelliyoruz.
-    Traefik --providers.file.watch=true ile bu dosyayı izliyor,
-    değişince otomatik yeniliyor — restart gerekmez.
+    FAZ 4 A.2:
+        router_name  = subdomain (örn. "omertank36-testapp")
+        container_name = benzersiz container adı (örn. "omertank36_testapp")
 
-    Sonuç: http://demo-app.localhost:8090 → app-demo-app container'ı
+    Önceki davranış:
+        router_name = project_name (örn. "testapp")
+        container_name = "app-testapp"
     """
-    with _traefik_lock:  # iki build aynı anda dosyayı bozmasın
+    with _traefik_lock:
         try:
             with open(DYNAMIC_YML, "r") as f:
                 config = yaml.safe_load(f) or {}
         except Exception:
             config = {}
 
-        # Temel yapı yoksa oluştur
         config.setdefault("http", {})
         config["http"].setdefault("routers", {})
         config["http"].setdefault("services", {})
 
-        # Yeni router: hangi subdomain'den gelirse bu servise git
+        # router_name artık subdomain değeri (örn. omertank36-testapp)
         config["http"]["routers"][router_name] = {
             "rule":        f"Host(`{router_name}.localhost`)",
             "service":     router_name,
             "entryPoints": ["web"]
         }
 
-        # Yeni service: o subdomain'i bu container'a yönlendir
-        # container_name = "app-demo-app" — Docker iç ağında (paas-net) erişilebilir
+        # container_name artık kullanıcı bazlı benzersiz (örn. omertank36_testapp)
         config["http"]["services"][router_name] = {
             "loadBalancer": {
                 "servers": [{"url": f"http://{container_name}:80"}]
@@ -90,27 +88,18 @@ def update_traefik(router_name: str, container_name: str):
         with open(DYNAMIC_YML, "w") as f:
             yaml.dump(config, f, default_flow_style=False)
 
-        print(f"[traefik] ✅ Routing eklendi: {router_name}.localhost → {container_name}")
+        print(f"[traefik] ✅ Routing: {router_name}.localhost → {container_name}")
 
 
 def restart_traefik():
     """
     Swarm modunda Traefik container'ını yeniden başlatır.
-
-    NEDEN GEREKİYOR?
-    Windows'ta --providers.file.watch=true çalışmadığı için
-    traefik_dynamic.yml değişince Traefik'i manuel restart etmek gerekiyor.
-
-    SWARM FARKI:
-    docker-compose'da container adı sabitti: 'traefik_proxy'
-    Swarm'da container adı dinamik: 'mini-paas_traefik.1.xxxxx'
-    Bu yüzden önce gerçek container ID'sini buluyoruz.
+    Windows'ta --providers.file.watch=true çalışmadığı için gerekli.
     """
     container_id = get_traefik_container_id()
     if not container_id:
         print("[!] Traefik container bulunamadı, restart atlandı")
         return
-
     try:
         subprocess.run(
             ["docker", "restart", container_id],
@@ -121,31 +110,45 @@ def restart_traefik():
         print(f"[!] Traefik restart başarısız: {e}")
 
 
-def build_and_deploy(project_path: str, project_name: str) -> bool:
+def build_and_deploy(project_path: str, project_name: str,
+                     container_name: str = "", subdomain: str = "") -> bool:
     """
     3 adımda deploy:
       1. docker build  → klonlanan repodan image üret
       2. docker run    → container'ı paas-net ağında başlat
       3. traefik güncelle → subdomain yönlendirmesini ekle
+
+    FAZ 4 A.2 parametreleri:
+        container_name : Kullanıcı bazlı benzersiz container adı.
+                         Örn: "omertank36_testapp"
+                         Boş gelirse eski davranışa (app-{project_name}) geri düşer.
+        subdomain      : Traefik router adı ve Host kuralı.
+                         Örn: "omertank36-testapp"
+                         Boş gelirse project_name kullanılır.
     """
-    image_name     = f"{project_name.lower()}-img"
-    container_name = f"app-{project_name.lower()}"
-    router_name    = project_name.lower().replace("_", "-").replace(" ", "-")
-    log_path       = f"./workspace/{project_name.lower()}.log"
+    image_name = f"{project_name.lower()}-img"
+    log_path   = f"./workspace/{project_name.lower()}.log"
+
+    # FAZ 4 A.2: geriye uyumluluk — parametre gelmezse eski davranış
+    if not container_name:
+        container_name = f"app-{project_name.lower()}"
+    if not subdomain:
+        subdomain = project_name.lower().replace("_", "-").replace(" ", "-")
 
     os.makedirs("./workspace", exist_ok=True)
 
     with open(log_path, "a", encoding="utf-8") as log_file:
 
-        def log(msg):
+        def _log(msg):
             print(msg, flush=True)
             log_file.write(msg + "\n")
             log_file.flush()
 
-        log(f"\n[*] '{project_name}' için build başlatıldı...")
+        _log(f"\n[*] '{project_name}' için build başlatıldı...")
+        _log(f"[*] Container: {container_name} | Subdomain: {subdomain}.localhost")
 
-        # Eski image varsa sil (yeni build öncesi temizlik)
-        log(f"[*] Eski image temizleniyor: {image_name}")
+        # Eski image varsa sil
+        _log(f"[*] Eski image temizleniyor: {image_name}")
         subprocess.run(
             ["docker", "rmi", "-f", image_name],
             stdout=subprocess.DEVNULL,
@@ -154,14 +157,14 @@ def build_and_deploy(project_path: str, project_name: str) -> bool:
 
         try:
             # ── 1. Docker image build ─────────────────────────────
-            log(f"[*] Image build ediliyor: {image_name}")
+            _log(f"[*] Image build ediliyor: {image_name}")
             subprocess.run(
                 ["docker", "build", "--progress=plain", "-t", image_name, project_path],
                 check=True,
                 stdout=log_file,
                 stderr=subprocess.STDOUT
             )
-            log(f"[+] Image başarıyla oluşturuldu: {image_name}")
+            _log(f"[+] Image oluşturuldu: {image_name}")
 
             # ── 2. Eski container varsa sil, yenisini başlat ──────
             subprocess.run(
@@ -171,42 +174,37 @@ def build_and_deploy(project_path: str, project_name: str) -> bool:
             )
 
             paas_network = get_paas_network()
-            log(f"[*] Container başlatılıyor: {container_name} (network: {paas_network})")
+            _log(f"[*] Container başlatılıyor: {container_name} (network: {paas_network})")
             subprocess.run(
                 [
                     "docker", "run", "-d",
-                    "--name",    container_name,
+                    "--name",    container_name,   # FAZ 4 A.2: kullanıcı bazlı benzersiz
                     "--network", paas_network,
-                    # NOT: -l (label) etiketleri artık işe yaramıyor çünkü
-                    # Docker provider kapalı. Traefik routing'i update_traefik()
-                    # fonksiyonu ile traefik_dynamic.yml üzerinden yapıyoruz.
                     image_name
                 ],
                 check=True,
                 stdout=log_file,
                 stderr=subprocess.STDOUT
             )
-            log(f"[+] Container başlatıldı: {container_name}")
+            _log(f"[+] Container başlatıldı: {container_name}")
 
             # ── 3. Traefik'e subdomain kaydını ekle ───────────────
-            update_traefik(router_name, container_name)
-
-            # Traefik'i restart et (Windows'ta file watch çalışmadığı için)
-            # Swarm'da container adı dinamik olduğu için get_traefik_container_id() kullanıyoruz
+            # FAZ 4 A.2: router_name = subdomain (örn. omertank36-testapp)
+            update_traefik(subdomain, container_name)
             restart_traefik()
 
-            log(f"[+] SUCCESS! Uygulama yayında:")
-            log(f"    http://{router_name}.localhost:8090")
-            log("[SUCCESS!]")
+            _log(f"[+] SUCCESS! Uygulama yayında:")
+            _log(f"    http://{subdomain}.localhost:8090")
+            _log("[SUCCESS!]")
             return True
 
         except subprocess.CalledProcessError as e:
-            log(f"[-] Docker hatası: {e}")
-            log("[error occurred]")
+            _log(f"[-] Docker hatası: {e}")
+            _log("[error occurred]")
             return False
         except Exception as e:
-            log(f"[-] Beklenmeyen hata: {e}")
-            log("[error occurred]")
+            _log(f"[-] Beklenmeyen hata: {e}")
+            _log("[error occurred]")
             return False
 
 

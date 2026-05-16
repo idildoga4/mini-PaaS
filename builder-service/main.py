@@ -1,6 +1,7 @@
 from fastapi import FastAPI, BackgroundTasks, WebSocket, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from typing import Optional
 import asyncio, os, re, subprocess, requests
 
 from git_manager import clone_repo
@@ -23,7 +24,12 @@ class DeployRequest(BaseModel):
     deploy_id:    int
     repo_url:     str
     project_name: str
-    github_token: str = ""
+    github_token: str    = ""
+    # FAZ 4 A.2: kullanıcı bazlı benzersiz container adı ve subdomain
+    # deploy-service tarafından hesaplanıp gönderilir.
+    # Boş gelirse eski davranışa (app-{project}) geri düşer — geriye uyumluluk.
+    container_name: Optional[str] = ""
+    subdomain:      Optional[str] = ""
 
     def validate_repo_url(self):
         url = self.repo_url.strip()
@@ -34,17 +40,28 @@ class DeployRequest(BaseModel):
         return url
 
 # ─── Pipeline ─────────────────────────────────────────────────
-def run_pipeline(deploy_id: int, repo_url: str, project_name: str, github_token: str = ""):
-    project_name = re.sub(r'[^a-z0-9-]', '-', project_name.lower().strip()).strip('-')
-    project_name = re.sub(r'-+', '-', project_name)
+def run_pipeline(deploy_id: int, repo_url: str, project_name: str,
+                 github_token: str = "", container_name: str = "", subdomain: str = ""):
+    # project_name build için temizle (image adı olarak kullanılacak)
+    clean_name = re.sub(r'[^a-z0-9-]', '-', project_name.lower().strip()).strip('-')
+    clean_name = re.sub(r'-+', '-', clean_name)
 
-    subdomain = f"{project_name}.localhost"
+    # FAZ 4 A.2: container_name gelmemişse eski davranışa geri dön
+    if not container_name:
+        container_name = f"app-{clean_name}"
+        print(f"[builder] container_name gelmedi, fallback: {container_name}")
 
-    project_path = clone_repo(repo_url, project_name, github_token)
+    # FAZ 4 A.2: subdomain gelmemişse proje adından türet
+    if not subdomain:
+        subdomain = clean_name
+        print(f"[builder] subdomain gelmedi, fallback: {subdomain}")
+
+    project_path = clone_repo(repo_url, clean_name, github_token)
     status = "Failed"
 
     if project_path:
-        success = build_and_deploy(project_path, project_name)
+        # FAZ 4 A.2: container_name ve subdomain build_and_deploy'a iletiliyor
+        success = build_and_deploy(project_path, clean_name, container_name, subdomain)
         if success:
             status = "Running"
 
@@ -56,11 +73,11 @@ def run_pipeline(deploy_id: int, repo_url: str, project_name: str, github_token:
                 "deploy_id": deploy_id,
                 "status":    status,
                 "port":      8090,
-                "subdomain": subdomain
+                "subdomain": f"{subdomain}.localhost"
             },
             timeout=10
         )
-        print(f"[builder] Webhook gönderildi → ID:{deploy_id} | {status} | {subdomain}")
+        print(f"[builder] Webhook → ID:{deploy_id} | {status} | {subdomain}.localhost")
     except Exception as e:
         print(f"[builder] Webhook hatası: {e}")
 
@@ -87,7 +104,13 @@ async def deploy_project(req: DeployRequest, background_tasks: BackgroundTasks):
         raise HTTPException(status_code=400, detail=str(e))
 
     background_tasks.add_task(
-        run_pipeline, req.deploy_id, req.repo_url, req.project_name, req.github_token
+        run_pipeline,
+        req.deploy_id,
+        req.repo_url,
+        req.project_name,
+        req.github_token,
+        req.container_name or "",   # FAZ 4 A.2
+        req.subdomain or "",        # FAZ 4 A.2
     )
     return {
         "message":        f"{req.project_name} için deployment başlatıldı",

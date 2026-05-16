@@ -4,11 +4,12 @@ from fastapi.responses import RedirectResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from datetime import datetime, timedelta
-from jose import JWTError, jwt
+from jose import JWTError, jwt           # FAZ 4 A.3 — local doğrulama
 import hashlib, hmac, httpx, os
 from secrets_helper import get_secret
 from database import init_db, get_connection
-from circuit_breaker import verify_token_with_circuit_breaker
+# FAZ 4 A.3: circuit_breaker import'u kaldırıldı
+# from circuit_breaker import verify_token_with_circuit_breaker  ← artık yok
 
 SECRET_KEY           = get_secret("jwt_secret",            "JWT_SECRET")
 ALGORITHM             = "HS256"
@@ -16,7 +17,7 @@ GITHUB_CLIENT_ID      = os.getenv("GITHUB_CLIENT_ID")
 GITHUB_CLIENT_SECRET = get_secret("github_client_secret",  "GITHUB_CLIENT_SECRET")
 WEBHOOK_SECRET       = get_secret("webhook_secret",        "WEBHOOK_SECRET")
 DEPLOY_SERVICE_URL    = os.getenv("DEPLOY_SERVICE_URL", "http://deploy-service:8003")
-AUTH_SERVICE_URL      = os.getenv("AUTH_SERVICE_URL", "http://auth-service:8001")
+# AUTH_SERVICE_URL artık kullanılmıyor — A.3 ile bağımlılık kaldırıldı
 
 bearer = HTTPBearer()
 app = FastAPI(title="GitHub Service")
@@ -26,12 +27,17 @@ init_db()
 
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
-# ─── Auth (circuit breaker ile) ───────────────────────────────
+# ─── FAZ 4 A.3: Local JWT doğrulama ──────────────────────────────────────────
+# Auth Service down olsa bile GitHub Service çalışmaya devam eder.
 async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(bearer)) -> str:
-    return await verify_token_with_circuit_breaker(
-        credentials.credentials,
-        AUTH_SERVICE_URL
-    )
+    try:
+        payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
+        email: str = payload.get("sub")
+        if not email:
+            raise HTTPException(status_code=401, detail="Geçersiz token")
+        return email
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Token geçersiz veya süresi dolmuş")
 
 # ─── Endpoints ────────────────────────────────────────────────
 @app.get("/api/github/login")
@@ -123,7 +129,6 @@ async def github_webhook(request: Request):
     pusher    = payload["pusher"]["name"]
     print(f"[GitHub Service] Push alındı → {pusher} → {repo_url}")
 
-    # Deploy Service'ten bu repo'ya ait son deployment'ı bul
     import requests as http_requests
     try:
         r = http_requests.get(
@@ -140,7 +145,6 @@ async def github_webhook(request: Request):
         print(f"[GitHub Service] Deploy Service sorgu hatası: {e}")
         return {"message": "Deploy Service ulaşılamadı"}
 
-    # GitHub token'ı al
     conn = get_connection()
     token_row = conn.execute(
         "SELECT github_token FROM github_tokens WHERE email=?", (user_email,)
@@ -148,14 +152,15 @@ async def github_webhook(request: Request):
     github_token = (token_row["github_token"] or "") if token_row else ""
     conn.close()
 
-    # Deploy Service'i tetikle
+    # FAZ 4 A.1: github_url de payload'a ekleniyor
+    # internal/deploy endpoint'i bunu upsert için kullanacak
     try:
         r = http_requests.post(
             f"{DEPLOY_SERVICE_URL}/api/internal/deploy",
             json={
                 "user_email":   user_email,
                 "project_name": project_name,
-                "github_url":   repo_url,
+                "github_url":   repo_url,       # A.1: upsert için gerekli
                 "github_token": github_token
             },
             timeout=10

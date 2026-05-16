@@ -27,6 +27,21 @@ http:
       priority: 10
       rule: Host(`localhost`) && PathPrefix(`/api/github`)
       service: github-service
+    omertank36-testapp:
+      entryPoints:
+      - web
+      rule: Host(`omertank36-testapp.localhost`)
+      service: omertank36-testapp
+    omertank37-testapp:
+      entryPoints:
+      - web
+      rule: Host(`omertank37-testapp.localhost`)
+      service: omertank37-testapp
+    test2:
+      entryPoints:
+      - web
+      rule: Host(`test2.localhost`)
+      service: test2
     testapp:
       entryPoints:
       - web
@@ -45,6 +60,18 @@ http:
       loadBalancer:
         servers:
         - url: http://github-service:8002
+    omertank36-testapp:
+      loadBalancer:
+        servers:
+        - url: http://omertank36_testapp:80
+    omertank37-testapp:
+      loadBalancer:
+        servers:
+        - url: http://omertank37_testapp:80
+    test2:
+      loadBalancer:
+        servers:
+        - url: http://app-test2:80
     testapp:
       loadBalancer:
         servers:

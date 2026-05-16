@@ -3,15 +3,22 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from datetime import datetime
+from jose import JWTError, jwt          # FAZ 4 A.3 — local doğrulama
 import requests as http_requests
 import httpx, re, os
-from circuit_breaker import verify_token_with_circuit_breaker
+from secrets_helper import get_secret   # FAZ 4 A.3
 
-from database import init_db, get_connection
+from database import init_db, get_connection, upsert_project  # FAZ 4 A.1
 
-AUTH_SERVICE_URL    = os.getenv("AUTH_SERVICE_URL", "http://auth-service:8001")
+AUTH_SERVICE_URL    = os.getenv("AUTH_SERVICE_URL",    "http://auth-service:8001")
 BUILDER_SERVICE_URL = os.getenv("BUILDER_SERVICE_URL", "http://builder-service:5000")
-GITHUB_SERVICE_URL  = os.getenv("GITHUB_SERVICE_URL", "http://github-service:8002")
+GITHUB_SERVICE_URL  = os.getenv("GITHUB_SERVICE_URL",  "http://github-service:8002")
+
+# ── FAZ 4 A.3: Auth Service'e bağımlılığı kopar ──────────────────────────────
+# deploy-service artık JWT'yi kendi doğrular.
+# Auth Service sadece token üretir; bu servis artık /api/auth/verify çağırmaz.
+SECRET_KEY = get_secret("jwt_secret", "JWT_SECRET")
+ALGORITHM  = "HS256"
 
 bearer = HTTPBearer()
 app = FastAPI(title="Deploy Service")
@@ -32,13 +39,50 @@ class WebhookRequest(BaseModel):
     port:      int
     subdomain: str = ""
 
-# ─── Auth ─────────────────────────────────────────────────────
-# ─── Auth ─────────────────────────────────────────────────────
+# ─── FAZ 4 A.3: Local JWT doğrulama ──────────────────────────────────────────
+# Auth Service down olsa bile tüm API endpoint'leri çalışmaya devam eder.
+# circuit_breaker.py'ye olan bağımlılık kaldırıldı.
 async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(bearer)) -> str:
-    return await verify_token_with_circuit_breaker(
-        credentials.credentials,
-        AUTH_SERVICE_URL
-    )
+    try:
+        payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
+        email: str = payload.get("sub")
+        if not email:
+            raise HTTPException(status_code=401, detail="Geçersiz token")
+        return email
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Token geçersiz veya süresi dolmuş")
+
+# ─── FAZ 4 A.2: Container adı üretici ───────────────────────────────────────
+def compute_container_name(user_email: str, project_name: str) -> str:
+    """
+    Kullanıcı bazlı benzersiz container adı üretir.
+
+    Örnekler:
+        omertank36@gmail.com + testapp   → omertank36_testapp
+        ali.veli@company.com + api       → ali_veli_api
+
+    Böylece farklı kullanıcılar aynı proje adını kullanabilir,
+    container çakışması olmaz.
+    """
+    email_prefix = user_email.split("@")[0].lower().replace(".", "_")
+    # Docker isimlendirme kuralı: [a-zA-Z0-9][a-zA-Z0-9_.-]
+    email_prefix = re.sub(r"[^a-z0-9_]", "_", email_prefix)
+    clean_project = re.sub(r"[^a-z0-9-]", "-", project_name.lower().strip()).strip("-")
+    clean_project = re.sub(r"-+", "-", clean_project)
+    return f"{email_prefix}_{clean_project}"
+
+def compute_subdomain(user_email: str, project_name: str) -> str:
+    """
+    Traefik subdomain adı üretir.
+
+    Örnekler:
+        omertank36@gmail.com + testapp  → omertank36-testapp
+    """
+    email_prefix = user_email.split("@")[0].lower().replace(".", "-")
+    email_prefix = re.sub(r"[^a-z0-9-]", "-", email_prefix).strip("-")
+    clean_project = re.sub(r"[^a-z0-9-]", "-", project_name.lower().strip()).strip("-")
+    clean_project = re.sub(r"-+", "-", clean_project)
+    return f"{email_prefix}-{clean_project}"
 
 # ─── GitHub token al ──────────────────────────────────────────
 async def get_github_token(email: str) -> str:
@@ -56,12 +100,20 @@ async def get_github_token(email: str) -> str:
     return ""
 
 # ─── Builder tetikle ──────────────────────────────────────────
-def trigger_builder(deploy_id: int, github_url: str, project_name: str, github_token: str = ""):
+# FAZ 4 A.2: container_name parametresi eklendi
+def trigger_builder(deploy_id: int, github_url: str, project_name: str,
+                    github_token: str = "", container_name: str = "", subdomain: str = ""):
     try:
         r = http_requests.post(
             f"{BUILDER_SERVICE_URL}/deploy",
-            json={"deploy_id": deploy_id, "repo_url": github_url,
-                  "project_name": project_name, "github_token": github_token},
+            json={
+                "deploy_id":      deploy_id,
+                "repo_url":       github_url,
+                "project_name":   project_name,
+                "github_token":   github_token,
+                "container_name": container_name,   # FAZ 4 A.2
+                "subdomain":      subdomain,        # FAZ 4 A.2
+            },
             timeout=10
         )
         print(f"[Deploy Service] Builder: {r.status_code}")
@@ -73,15 +125,26 @@ def trigger_builder(deploy_id: int, github_url: str, project_name: str, github_t
         conn.close()
 
 # ─── Yeni deployment başlat ───────────────────────────────────
-def start_deployment(conn, email: str, project_name: str, github_url: str) -> int:
+# FAZ 4 A.2: container_name parametresi eklendi, veritabanına yazılıyor
+def start_deployment(conn, email: str, project_name: str, github_url: str,
+                     container_name: str = "") -> int:
     conn.execute(
-        "UPDATE deployments SET status='Stopped' WHERE user_email=? AND LOWER(project_name)=LOWER(?) AND status IN ('Running','Pending','Building')",
+        """
+        UPDATE deployments SET status='Stopped'
+        WHERE user_email=? AND LOWER(project_name)=LOWER(?)
+          AND status IN ('Running','Pending','Building')
+        """,
         (email, project_name)
     )
     cursor = conn.cursor()
     cursor.execute(
-        "INSERT INTO deployments (user_email, project_name, github_url, status, created_at) VALUES (?,?,?,?,?)",
-        (email, project_name, github_url, "Pending", datetime.utcnow().isoformat())
+        """
+        INSERT INTO deployments
+            (user_email, project_name, github_url, status, container_name, created_at)
+        VALUES (?,?,?,?,?,?)
+        """,
+        (email, project_name, github_url, "Pending", container_name,
+         datetime.utcnow().isoformat())
     )
     deploy_id = cursor.lastrowid
     conn.commit()
@@ -89,7 +152,8 @@ def start_deployment(conn, email: str, project_name: str, github_url: str) -> in
 
 # ─── Project endpoints ────────────────────────────────────────
 @app.post("/api/projects")
-async def create_project(req: ProjectRequest, bg: BackgroundTasks, email: str = Depends(verify_token)):
+async def create_project(req: ProjectRequest, bg: BackgroundTasks,
+                         email: str = Depends(verify_token)):
     """Yeni proje oluştur ve ilk deploy'u başlat."""
     conn = get_connection()
     existing = conn.execute(
@@ -104,11 +168,17 @@ async def create_project(req: ProjectRequest, bg: BackgroundTasks, email: str = 
         "INSERT INTO projects (user_email, project_name, github_url, created_at) VALUES (?,?,?,?)",
         (email, req.project_name, req.github_url, datetime.utcnow().isoformat())
     )
-    deploy_id = start_deployment(conn, email, req.project_name, req.github_url)
+
+    # FAZ 4 A.2: kullanıcı-proje bazlı container adı
+    container_name = compute_container_name(email, req.project_name)
+    subdomain      = compute_subdomain(email, req.project_name)
+
+    deploy_id = start_deployment(conn, email, req.project_name, req.github_url, container_name)
     conn.close()
 
     github_token = await get_github_token(email)
-    bg.add_task(trigger_builder, deploy_id, req.github_url, req.project_name, github_token)
+    bg.add_task(trigger_builder, deploy_id, req.github_url, req.project_name,
+                github_token, container_name, subdomain)
     return {"deploy_id": deploy_id, "message": "Proje oluşturuldu, deployment başlatıldı"}
 
 @app.get("/api/projects")
@@ -121,7 +191,8 @@ async def list_projects(email: str = Depends(verify_token)):
     return [dict(r) for r in rows]
 
 @app.post("/api/projects/{project_name}/redeploy")
-async def redeploy(project_name: str, bg: BackgroundTasks, email: str = Depends(verify_token)):
+async def redeploy(project_name: str, bg: BackgroundTasks,
+                   email: str = Depends(verify_token)):
     """Mevcut projeyi yeniden deploy et."""
     conn = get_connection()
     proj = conn.execute(
@@ -132,11 +203,17 @@ async def redeploy(project_name: str, bg: BackgroundTasks, email: str = Depends(
         conn.close()
         raise HTTPException(status_code=404, detail="Proje bulunamadı")
 
-    deploy_id = start_deployment(conn, email, proj["project_name"], proj["github_url"])
+    # FAZ 4 A.2: container adını yeniden hesapla (tutarlılık için)
+    container_name = compute_container_name(email, proj["project_name"])
+    subdomain      = compute_subdomain(email, proj["project_name"])
+
+    deploy_id = start_deployment(conn, email, proj["project_name"], proj["github_url"],
+                                 container_name)
     conn.close()
 
     github_token = await get_github_token(email)
-    bg.add_task(trigger_builder, deploy_id, proj["github_url"], proj["project_name"], github_token)
+    bg.add_task(trigger_builder, deploy_id, proj["github_url"], proj["project_name"],
+                github_token, container_name, subdomain)
     return {"deploy_id": deploy_id, "message": "Redeploy başlatıldı"}
 
 @app.delete("/api/projects/{project_name}")
@@ -151,12 +228,28 @@ async def delete_project(project_name: str, email: str = Depends(verify_token)):
         conn.close()
         raise HTTPException(status_code=404, detail="Proje bulunamadı")
 
-    clean_name     = re.sub(r'[^a-z0-9-]', '-', project_name.lower().strip()).strip('-')
-    container_name = f"app-{clean_name}"
-    image_name     = f"{clean_name}-img"
+    # FAZ 4 A.2: container adını veritabanından al, yoksa hesapla
+    running = conn.execute(
+        """
+        SELECT container_name FROM deployments
+        WHERE user_email=? AND LOWER(project_name)=LOWER(?) AND status='Running'
+        ORDER BY id DESC LIMIT 1
+        """,
+        (email, project_name)
+    ).fetchone()
 
-    conn.execute("DELETE FROM deployments WHERE user_email=? AND LOWER(project_name)=LOWER(?)", (email, project_name))
-    conn.execute("DELETE FROM projects WHERE user_email=? AND LOWER(project_name)=LOWER(?)", (email, project_name))
+    container_name = (running["container_name"] if running and running["container_name"]
+                      else compute_container_name(email, project_name))
+    image_name     = f"{re.sub(r'[^a-z0-9-]', '-', project_name.lower().strip()).strip('-')}-img"
+
+    conn.execute(
+        "DELETE FROM deployments WHERE user_email=? AND LOWER(project_name)=LOWER(?)",
+        (email, project_name)
+    )
+    conn.execute(
+        "DELETE FROM projects WHERE user_email=? AND LOWER(project_name)=LOWER(?)",
+        (email, project_name)
+    )
     conn.commit()
     conn.close()
 
@@ -214,12 +307,16 @@ async def delete_deployment(deploy_id: int, email: str = Depends(verify_token)):
         conn.close()
         raise HTTPException(status_code=404, detail="Bulunamadı")
 
-    clean_name     = re.sub(r'[^a-z0-9-]', '-', row["project_name"].lower().strip()).strip('-')
-    container_name = f"app-{clean_name}"
-    image_name     = f"{clean_name}-img"
+    # FAZ 4 A.2: veritabanındaki container_name'i kullan
+    container_name = (row["container_name"] if row["container_name"]
+                      else compute_container_name(email, row["project_name"]))
+    image_name     = f"{re.sub(r'[^a-z0-9-]', '-', row['project_name'].lower().strip()).strip('-')}-img"
 
     other = conn.execute(
-        "SELECT id FROM deployments WHERE user_email=? AND project_name=? AND id!=? AND status='Running'",
+        """
+        SELECT id FROM deployments
+        WHERE user_email=? AND project_name=? AND id!=? AND status='Running'
+        """,
         (email, row["project_name"], deploy_id)
     ).fetchone()
 
@@ -252,11 +349,16 @@ async def stop_deployment(deploy_id: int, email: str = Depends(verify_token)):
         conn.close()
         raise HTTPException(status_code=400, detail="Sadece çalışan deployment durdurulabilir")
 
-    clean_name     = re.sub(r'[^a-z0-9-]', '-', row["project_name"].lower().strip()).strip('-')
-    container_name = f"app-{clean_name}"
+    # FAZ 4 A.2: veritabanındaki container_name'i kullan
+    container_name = (row["container_name"] if row["container_name"]
+                      else compute_container_name(email, row["project_name"]))
 
     try:
-        http_requests.post(f"{BUILDER_SERVICE_URL}/stop", json={"container_name": container_name}, timeout=15)
+        http_requests.post(
+            f"{BUILDER_SERVICE_URL}/stop",
+            json={"container_name": container_name},
+            timeout=15
+        )
     except Exception as e:
         print(f"[Deploy Service] Stop hatası: {e}")
 
@@ -278,19 +380,48 @@ async def latest_deployment(repo_name: str):
         raise HTTPException(status_code=404, detail="Deployment bulunamadı")
     return dict(row)
 
+# ─── FAZ 4 A.1: internal/deploy — upsert fix ─────────────────────────────────
 @app.post("/api/internal/deploy")
 async def internal_deploy(request: Request, bg: BackgroundTasks):
+    """
+    GitHub push webhook'undan tetiklenen otomatik deploy endpoint'i.
+
+    FAZ 4 A.1 değişikliği:
+        Endpoint başında projects tablosuna upsert yapılır.
+        Bu sayede push-to-deploy ile gelen deploy'lar Projects sayfasında görünür.
+
+    FAZ 4 A.2 değişikliği:
+        container_name ve subdomain artık user_email + project_name kombinasyonundan
+        hesaplanır; builder'a payload ile iletilir.
+    """
     data         = await request.json()
     user_email   = data.get("user_email", "")
     project_name = data.get("project_name", "")
     github_url   = data.get("github_url", "")
     github_token = data.get("github_token", "")
 
+    if not project_name:
+        raise HTTPException(status_code=422, detail="project_name zorunlu")
+
     conn = get_connection()
-    deploy_id = start_deployment(conn, user_email, project_name, github_url)
+
+    # ── A.1: Projects tablosuna upsert ───────────────────────────────────────
+    # Push-to-deploy ile gelen deploy'lar artık Projects sayfasında görünür.
+    if github_url and user_email:
+        upsert_project(conn, user_email, project_name, github_url)
+    else:
+        print(f"[Deploy Service] internal/deploy: upsert atlandı "
+              f"(user_email={user_email!r}, github_url={github_url!r})")
+
+    # ── A.2: Kullanıcı bazlı container adı hesapla ───────────────────────────
+    container_name = compute_container_name(user_email or "anon", project_name)
+    subdomain      = compute_subdomain(user_email or "anon", project_name)
+
+    deploy_id = start_deployment(conn, user_email, project_name, github_url, container_name)
     conn.close()
 
-    bg.add_task(trigger_builder, deploy_id, github_url, project_name, github_token)
+    bg.add_task(trigger_builder, deploy_id, github_url, project_name,
+                github_token, container_name, subdomain)
     return {"message": "Redeploy başlatıldı", "deploy_id": deploy_id}
 
 # ─── Health ───────────────────────────────────────────────────

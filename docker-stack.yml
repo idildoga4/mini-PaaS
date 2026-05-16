@@ -76,7 +76,9 @@ services:
       retries: 3
       start_period: 15s
     deploy:
-      replicas: 2
+      # FAZ 4: SQLite dosyası her replica'da ayrı olduğundan replicas=1 zorunlu.
+      # Çözüm: Faz 5'te PostgreSQL'e geçince replicas artırılabilir.
+      replicas: 1
       restart_policy:
         condition: on-failure
         delay: 5s
@@ -112,7 +114,9 @@ services:
       retries: 3
       start_period: 15s
     deploy:
-      replicas: 2
+      # FAZ 4: SQLite dosyası her replica'da ayrı olduğundan replicas=1 zorunlu.
+      # Çözüm: Faz 5'te PostgreSQL'e geçince replicas artırılabilir.
+      replicas: 1
       restart_policy:
         condition: on-failure
         delay: 5s
@@ -148,7 +152,9 @@ services:
       retries: 3
       start_period: 15s
     deploy:
-      replicas: 2
+      # FAZ 4: SQLite dosyası her replica'da ayrı olduğundan replicas=1 zorunlu.
+      # Çözüm: Faz 5'te PostgreSQL'e geçince replicas artırılabilir.
+      replicas: 1
       restart_policy:
         condition: on-failure
         delay: 5s
