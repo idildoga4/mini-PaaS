@@ -1,4 +1,8 @@
-from fastapi import FastAPI, BackgroundTasks, WebSocket, HTTPException
+import uuid
+import contextvars
+import logging
+from pythonjsonlogger import jsonlogger
+from fastapi import FastAPI, BackgroundTasks, WebSocket, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
@@ -6,6 +10,21 @@ import asyncio, os, re, subprocess, requests
 
 from git_manager import clone_repo
 from docker_manager import build_and_deploy
+trace_id_var = contextvars.ContextVar("trace_id", default='no-trace')
+
+class TraceIdFilter(logging.Filter):
+    def filter(self, record):
+        record.trace_id = trace_id_var.get()
+        return True
+
+logger = logging.getLogger()
+logger.addFilter(TraceIdFilter())
+handler = logging.StreamHandler()
+formatter = jsonlogger.JsonFormatter('%(asctime)s %(levelname)s %(name)s %(message)s %(service_name)s %(trace_id)s')
+handler.setFormatter(formatter)
+logger.addHandler(handler)
+logger.setLevel(logging.INFO)
+service_logger = logging.LoggerAdapter(logger, extra={"service_name": "builder-service"})
 
 app = FastAPI(title="Builder Service")
 
@@ -16,6 +35,14 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+@app.middleware("http")
+async def trace_middleware(request: Request, call_next):
+    trace_id = request.headers.get("X-Trace-Id", str(uuid.uuid4())[:8])
+    token = trace_id_var.set(trace_id)
+    response = await call_next(request)
+    response.headers["X-Trace-Id"] = trace_id
+    trace_id_var.reset(token)
+    return response
 
 DEPLOY_SERVICE_URL = os.getenv("DEPLOY_SERVICE_URL", "http://deploy-service:8003")
 
@@ -51,12 +78,12 @@ def run_pipeline(deploy_id: int, repo_url: str, project_name: str,
     # FAZ 4 A.2: container_name gelmemişse eski davranışa geri dön
     if not container_name:
         container_name = f"app-{clean_name}"
-        print(f"[builder] container_name gelmedi, fallback: {container_name}")
+        service_logger.info(f"[builder] container_name gelmedi, fallback: {container_name}")
 
     # FAZ 4 A.2: subdomain gelmemişse proje adından türet
     if not subdomain:
         subdomain = clean_name
-        print(f"[builder] subdomain gelmedi, fallback: {subdomain}")
+        service_logger.info(f"[builder] subdomain gelmedi, fallback: {subdomain}")
 
     project_path = clone_repo(repo_url, clean_name, github_token)
     status = "Failed"
@@ -77,11 +104,12 @@ def run_pipeline(deploy_id: int, repo_url: str, project_name: str,
                 "port":      8090,
                 "subdomain": f"{subdomain}.localhost"
             },
+            headers={"X-Trace-Id": trace_id_var.get()},
             timeout=10
         )
-        print(f"[builder] Webhook → ID:{deploy_id} | {status} | {subdomain}.localhost")
+        service_logger.info(f"[builder] Webhook → ID:{deploy_id} | {status} | {subdomain}.localhost")
     except Exception as e:
-        print(f"[builder] Webhook hatası: {e}")
+        service_logger.error(f"[builder] Webhook hatası: {e}")
 
 # ─── Endpoints ────────────────────────────────────────────────
 @app.get("/health")
@@ -175,7 +203,7 @@ async def cleanup(data: dict):
         subprocess.run(["docker", "rm", "-f", container_name], capture_output=True)
     if image_name:
         subprocess.run(["docker", "rmi", "-f", image_name], capture_output=True)
-    print(f"[cleanup] {container_name} ve {image_name} silindi")
+    service_logger.info(f"[cleanup] {container_name} ve {image_name} silindi")
     return {"message": "Temizlendi"}
 
 @app.post("/stop")
@@ -185,7 +213,7 @@ async def stop_container(data: dict):
         raise HTTPException(status_code=400, detail="container_name gerekli")
     result = subprocess.run(["docker", "stop", container_name], capture_output=True, text=True)
     if result.returncode == 0:
-        print(f"[stop] {container_name} durduruldu")
+        service_logger.info(f"[stop] {container_name} durduruldu")
         return {"message": "Durduruldu"}
     else:
         raise HTTPException(status_code=500, detail=f"Durdurulamadı: {result.stderr}")

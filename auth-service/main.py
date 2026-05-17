@@ -1,4 +1,8 @@
-from fastapi import FastAPI, HTTPException, Depends
+import uuid
+import contextvars
+import logging
+from pythonjsonlogger import jsonlogger
+from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.staticfiles import StaticFiles
@@ -8,8 +12,24 @@ from jose import JWTError, jwt
 import hashlib, hmac, secrets, base64, re, os
 from typing import Optional
 from secrets_helper import get_secret
-
 from database import init_db, get_connection
+
+trace_id_var = contextvars.ContextVar("trace_id", default='no-trace')
+
+class TraceIdFilter(logging.Filter):
+    def filter(self, record):
+        record.trace_id = trace_id_var.get()
+        return True
+
+logger = logging.getLogger()
+logger.addFilter(TraceIdFilter())
+handler = logging.StreamHandler()
+formatter = jsonlogger.JsonFormatter('%(asctime)s %(levelname)s %(name)s %(message)s %(service_name)s %(trace_id)s')
+handler.setFormatter(formatter)
+logger.addHandler(handler)
+logger.setLevel(logging.INFO)
+
+service_logger = logging.LoggerAdapter(logger, extra={"service_name": "auth-service"})
 
 SECRET_KEY = get_secret("jwt_secret", "JWT_SECRET")
 ALGORITHM          = "HS256"
@@ -22,6 +42,14 @@ os.makedirs("data", exist_ok=True)
 init_db()
 
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+@app.middleware("http")
+async def trace_middleware(request: Request, call_next):
+    trace_id = request.headers.get("X-Trace-Id", str(uuid.uuid4())[:8])
+    token = trace_id_var.set(trace_id)
+    response = await call_next(request)
+    response.headers["X-Trace-Id"] = trace_id
+    trace_id_var.reset(token)
+    return response
 
 # ─── Models ───────────────────────────────────────────────────
 class RegisterRequest(BaseModel):

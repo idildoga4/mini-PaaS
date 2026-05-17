@@ -27,6 +27,11 @@ http:
       priority: 10
       rule: Host(`localhost`) && PathPrefix(`/api/github`)
       service: github-service
+    idildoga4-minipaastest:
+      entryPoints:
+      - web
+      rule: Host(`idildoga4-minipaastest.localhost`)
+      service: idildoga4-minipaastest
     omertank36-testapp:
       entryPoints:
       - web
@@ -60,6 +65,10 @@ http:
       loadBalancer:
         servers:
         - url: http://github-service:8002
+    idildoga4-minipaastest:
+      loadBalancer:
+        servers:
+        - url: http://idildoga4_minipaastest:80
     omertank36-testapp:
       loadBalancer:
         servers:

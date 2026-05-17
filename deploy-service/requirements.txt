@@ -4,3 +4,4 @@ requests
 python-jose[cryptography]
 httpx
 redis==5.0.8
+python-json-logger==2.0.7
