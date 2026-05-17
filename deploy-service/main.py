@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from datetime import datetime
 from jose import JWTError, jwt          # FAZ 4 A.3 — local doğrulama
 import requests as http_requests
-import httpx, re, os
+import httpx, re, os, asyncio, subprocess
 from secrets_helper import get_secret   # FAZ 4 A.3
 
 # --- LOGGING & TRACE ID KURULUMU ---
@@ -52,6 +52,53 @@ async def trace_middleware(request: Request, call_next):
     response.headers["X-Trace-Id"] = trace_id
     trace_id_var.reset(token)
     return response
+
+# ─── FAZ 4 B.2 — Orphan container health check ─────────────────────────────
+@app.on_event("startup")
+async def orphan_container_check():
+    await asyncio.sleep(3)
+
+    print("[startup-check] Running deployment container kontrolü başlıyor")
+
+    conn = get_connection()
+
+    rows = conn.execute(
+        """
+        SELECT id, container_name
+        FROM deployments
+        WHERE status='Running'
+        """
+    ).fetchall()
+
+    for row in rows:
+        deployment_id = row["id"]
+        container_name = row["container_name"]
+
+        print(f"[startup-check] Kontrol ediliyor: {container_name}")
+
+        result = subprocess.run(
+            ["docker", "ps", "-q", "-f", f"name={container_name}"],
+            capture_output=True,
+            text=True
+        )
+
+        # Container yoksa deployment FAILED yap
+        if not result.stdout.strip():
+            print(f"[startup-check] Container bulunamadı: {container_name}")
+
+            conn.execute(
+                """
+                UPDATE deployments
+                SET status='Failed'
+                WHERE id=?
+                """,
+                (deployment_id,)
+            )
+
+    conn.commit()
+    conn.close()
+
+    print("[startup-check] Tamamlandı")
 
 # ─── Models ───────────────────────────────────────────────────
 class ProjectRequest(BaseModel):
@@ -142,6 +189,20 @@ def trigger_builder(deploy_id: int, github_url: str, project_name: str,
             headers={"X-Trace-Id": trace_id_var.get()},
             timeout=10
         )
+        print(f"[Deploy Service] Builder: {r.status_code}")
+
+        if r.status_code == 409:
+            conn = get_connection()
+            conn.execute(
+                "UPDATE deployments SET status='Failed' WHERE id=?",
+                (deploy_id,)
+            )
+            conn.commit()
+            conn.close()
+
+            print("[Deploy Service] Paralel build engellendi")
+            return
+           
         service_logger.info(f"Builder tetiklendi, statüs: {r.status_code}")
     except Exception as e:
         service_logger.error(f"[Deploy Service] Builder ulaşılamadı: {e}")
