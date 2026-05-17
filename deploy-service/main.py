@@ -1,3 +1,7 @@
+import uuid
+import contextvars
+import logging
+from pythonjsonlogger import jsonlogger
 from fastapi import FastAPI, BackgroundTasks, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -8,15 +12,28 @@ import requests as http_requests
 import httpx, re, os
 from secrets_helper import get_secret   # FAZ 4 A.3
 
+# --- LOGGING & TRACE ID KURULUMU ---
+trace_id_var = contextvars.ContextVar("trace_id", default='no-trace')
+
+class TraceIdFilter(logging.Filter):
+    def filter(self, record):
+        record.trace_id = trace_id_var.get()
+        return True
+
+logger = logging.getLogger()
+logger.addFilter(TraceIdFilter())
+handler = logging.StreamHandler()
+formatter = jsonlogger.JsonFormatter('%(asctime)s %(levelname)s %(name)s %(message)s %(service_name)s %(trace_id)s')
+handler.setFormatter(formatter)
+logger.addHandler(handler)
+logger.setLevel(logging.INFO)
+service_logger = logging.LoggerAdapter(logger, extra={"service_name": "deploy-service"})
 from database import init_db, get_connection, upsert_project  # FAZ 4 A.1
 
 AUTH_SERVICE_URL    = os.getenv("AUTH_SERVICE_URL",    "http://auth-service:8001")
 BUILDER_SERVICE_URL = os.getenv("BUILDER_SERVICE_URL", "http://builder-service:5000")
 GITHUB_SERVICE_URL  = os.getenv("GITHUB_SERVICE_URL",  "http://github-service:8002")
 
-# ── FAZ 4 A.3: Auth Service'e bağımlılığı kopar ──────────────────────────────
-# deploy-service artık JWT'yi kendi doğrular.
-# Auth Service sadece token üretir; bu servis artık /api/auth/verify çağırmaz.
 SECRET_KEY = get_secret("jwt_secret", "JWT_SECRET")
 ALGORITHM  = "HS256"
 
@@ -27,6 +44,14 @@ os.makedirs("data", exist_ok=True)
 init_db()
 
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+@app.middleware("http")
+async def trace_middleware(request: Request, call_next):
+    trace_id = request.headers.get("X-Trace-Id", str(uuid.uuid4())[:8])
+    token = trace_id_var.set(trace_id)
+    response = await call_next(request)
+    response.headers["X-Trace-Id"] = trace_id
+    trace_id_var.reset(token)
+    return response
 
 # ─── Models ───────────────────────────────────────────────────
 class ProjectRequest(BaseModel):
@@ -114,11 +139,12 @@ def trigger_builder(deploy_id: int, github_url: str, project_name: str,
                 "container_name": container_name,   # FAZ 4 A.2
                 "subdomain":      subdomain,        # FAZ 4 A.2
             },
+            headers={"X-Trace-Id": trace_id_var.get()},
             timeout=10
         )
-        print(f"[Deploy Service] Builder: {r.status_code}")
+        service_logger.info(f"Builder tetiklendi, statüs: {r.status_code}")
     except Exception as e:
-        print(f"[Deploy Service] Builder ulaşılamadı: {e}")
+        service_logger.error(f"[Deploy Service] Builder ulaşılamadı: {e}")
         conn = get_connection()
         conn.execute("UPDATE deployments SET status='Failed' WHERE id=?", (deploy_id,))
         conn.commit()
@@ -257,10 +283,11 @@ async def delete_project(project_name: str, email: str = Depends(verify_token)):
         http_requests.post(
             f"{BUILDER_SERVICE_URL}/cleanup",
             json={"container_name": container_name, "image_name": image_name},
+            headers={"X-Trace-Id": trace_id_var.get()},
             timeout=10
         )
     except Exception as e:
-        print(f"[Deploy Service] Cleanup hatası: {e}")
+        service_logger.error(f"Builder ulaşılamadı: {e}")
 
     return {"message": "Proje silindi"}
 
@@ -274,7 +301,7 @@ async def webhook(req: WebhookRequest):
     )
     conn.commit()
     conn.close()
-    print(f"[Deploy Service] Deploy #{req.deploy_id} → {req.status}")
+    service_logger.info(f"[Deploy Service] Deploy #{req.deploy_id} → {req.status}")
     return {"message": "Güncellendi"}
 
 @app.get("/api/status/{deploy_id}")
@@ -329,10 +356,11 @@ async def delete_deployment(deploy_id: int, email: str = Depends(verify_token)):
             http_requests.post(
                 f"{BUILDER_SERVICE_URL}/cleanup",
                 json={"container_name": container_name, "image_name": image_name},
+                headers={"X-Trace-Id": trace_id_var.get()},
                 timeout=10
             )
         except Exception as e:
-            print(f"[Deploy Service] Cleanup hatası: {e}")
+            service_logger.error(f"[Deploy Service] Cleanup hatası: {e}")
 
     return {"message": "Silindi"}
 
@@ -357,10 +385,11 @@ async def stop_deployment(deploy_id: int, email: str = Depends(verify_token)):
         http_requests.post(
             f"{BUILDER_SERVICE_URL}/stop",
             json={"container_name": container_name},
+            headers={"X-Trace-Id": trace_id_var.get()},
             timeout=15
         )
     except Exception as e:
-        print(f"[Deploy Service] Stop hatası: {e}")
+        service_logger.error(f"[Deploy Service] Stop hatası: {e}")
 
     conn.execute("UPDATE deployments SET status='Stopped' WHERE id=?", (deploy_id,))
     conn.commit()
@@ -410,8 +439,8 @@ async def internal_deploy(request: Request, bg: BackgroundTasks):
     if github_url and user_email:
         upsert_project(conn, user_email, project_name, github_url)
     else:
-        print(f"[Deploy Service] internal/deploy: upsert atlandı "
-              f"(user_email={user_email!r}, github_url={github_url!r})")
+        service_logger.info(f"[Deploy Service] internal/deploy: upsert atlandı "
+                            f"(user_email={user_email!r}, github_url={github_url!r})")
 
     # ── A.2: Kullanıcı bazlı container adı hesapla ───────────────────────────
     container_name = compute_container_name(user_email or "anon", project_name)

@@ -1,0 +1,3933 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+.env.example
+.gitignore
+auth-service/data/auth.db
+auth-service/database.py
+auth-service/Dockerfile
+auth-service/main.py
+auth-service/requirements.txt
+auth-service/secrets_helper.py
+auth-service/static/index.html
+builder-service/.gitignore
+builder-service/docker_manager.py
+builder-service/Dockerfile
+builder-service/git_manager.py
+builder-service/main.py
+builder-service/requirements.txt
+deploy-service/circuit_breaker.py
+deploy-service/data/deploy.db
+deploy-service/database.py
+deploy-service/Dockerfile
+deploy-service/main.py
+deploy-service/requirements.txt
+deploy-service/secrets_helper.py
+docker-compose.yml
+docker-stack.yml
+github-service/circuit_breaker.py
+github-service/data/deploy.db
+github-service/data/github.db
+github-service/database.py
+github-service/Dockerfile
+github-service/main.py
+github-service/requirements.txt
+github-service/secrets_helper.py
+grafana/provisioning/dashboards/dashboard.yml
+grafana/provisioning/dashboards/mini-paas.json
+grafana/provisioning/datasources/prometheus.yml
+prometheus.yml
+swarm-deploy.sh
+traefik_dynamic.yml
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path=".env.example">
+# Mini PaaS — Ortam Değişkenleri
+# Bu dosyayı kopyalayın: cp .env.example .env
+# .env dosyasını ASLA Git'e commit etmeyin!
+
+# GitHub Personal Access Token
+# Almak için: GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic)
+# Gerekli izinler: repo (full control)
+GITHUB_TOKEN=your_github_token_here
+
+# GitHub OAuth App credentials
+# Oluşturmak için: GitHub → Settings → Developer settings → OAuth Apps → New OAuth App
+# Callback URL: http://localhost:5001/api/github/callback
+GITHUB_CLIENT_ID=your_github_client_id_here
+GITHUB_CLIENT_SECRET=your_github_client_secret_here
+
+# JWT imzalama anahtarı — güçlü ve rastgele bir string yazın
+JWT_SECRET=change-this-to-a-strong-random-secret
+
+# Grafana admin şifresi
+GRAFANA_PASSWORD=change-this-password
+</file>
+
+<file path="auth-service/database.py">
+import sqlite3
+import os
+
+DB_PATH = "data/auth.db"
+
+def init_db():
+    os.makedirs("data", exist_ok=True)
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            email        TEXT NOT NULL UNIQUE,
+            password     TEXT NOT NULL,
+            created_at   TEXT NOT NULL,
+            github_token TEXT
+        )
+    """)
+    try:
+        c.execute("ALTER TABLE users ADD COLUMN github_token TEXT")
+    except Exception:
+        pass
+    conn.commit()
+    conn.close()
+
+def get_connection():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+</file>
+
+<file path="auth-service/Dockerfile">
+FROM python:3.10-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY . .
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8001"]
+</file>
+
+<file path="auth-service/requirements.txt">
+fastapi
+uvicorn
+python-jose[cryptography]
+python-json-logger==2.0.7
+</file>
+
+<file path="auth-service/secrets_helper.py">
+# secrets_helper.py
+# Her servisin klasorune bu dosyayi kopyala.
+# main.py basina: from secrets_helper import get_secret
+
+import os
+
+def get_secret(name: str, env_fallback: str = None) -> str:
+    """
+    Once /run/secrets/<name> dosyasini okur (Docker Secrets).
+    Dosya yoksa env_fallback environment variable'ina bakar.
+    Ikisi de yoksa hata firlatir.
+
+    Kullanim:
+        JWT_SECRET    = get_secret("jwt_secret",          "JWT_SECRET")
+        WEBHOOK_SEC   = get_secret("webhook_secret",      "WEBHOOK_SECRET")
+        GH_SECRET     = get_secret("github_client_secret","GITHUB_CLIENT_SECRET")
+        NGROK_TOKEN   = get_secret("ngrok_authtoken",     "NGROK_AUTHTOKEN")
+    """
+    secret_path = f"/run/secrets/{name}"
+    if os.path.exists(secret_path):
+        with open(secret_path) as f:
+            return f.read().strip()
+
+    fallback_key = env_fallback or name.upper()
+    value = os.getenv(fallback_key)
+    if value:
+        return value
+
+    raise RuntimeError(
+        f"Secret '{name}' bulunamadi. "
+        f"Ne /run/secrets/{name} dosyasi ne de {fallback_key} env var mevcut."
+    )
+</file>
+
+<file path="builder-service/.gitignore">
+venv/
+__pycache__/
+*.pyc
+
+workspace/
+
+.env
+
+.DS_Store
+Thumbs.db
+</file>
+
+<file path="deploy-service/circuit_breaker.py">
+# circuit_breaker.py
+# deploy-service ve github-service klasörlerine kopyala.
+
+import hashlib
+import os
+import httpx
+import redis as redis_lib
+
+from fastapi import HTTPException
+
+REDIS_URL        = os.getenv("REDIS_URL", "redis://redis:6379")
+CIRCUIT_KEY      = "circuit:auth_service"
+FAIL_COUNT_KEY   = "circuit:auth_fail_count"
+TOKEN_TTL        = 60    # saniye
+CIRCUIT_OPEN_TTL = 30    # saniye
+FAIL_THRESHOLD   = 3
+
+# Modül yüklenince bir kez bağlantı kur, tekrar kullan
+_redis = None
+
+def get_redis():
+    global _redis
+    if _redis is not None:
+        try:
+            _redis.ping()
+            return _redis
+        except Exception:
+            _redis = None
+    try:
+        r = redis_lib.from_url(
+            REDIS_URL,
+            socket_connect_timeout=1,
+            socket_timeout=1,
+            decode_responses=True
+        )
+        r.ping()
+        _redis = r
+        return _redis
+    except Exception:
+        return None
+
+
+def _token_key(token: str) -> str:
+    return "token:" + hashlib.sha256(token.encode()).hexdigest()[:32]
+
+
+async def verify_token_with_circuit_breaker(token: str, auth_service_url: str) -> str:
+    """
+    Token doğrulama — Redis cache + circuit breaker.
+
+    Akış:
+    1. Redis cache hit → direkt dön (Auth Service'e gitme)
+    2. Circuit 'open' → 503 dön
+    3. Auth Service'e istek at (timeout: 3sn)
+       - Başarılı → cache'e yaz, fail sıfırla
+       - Hata → fail artır, eşik aşıldıysa circuit aç
+    4. Redis yoksa → Auth Service'e direkt git
+    """
+    r = get_redis()
+
+    # ── FALLBACK: Redis erişilemiyorsa direkt Auth Service ────────────────────
+    if r is None:
+        return await _direct_auth(token, auth_service_url)
+
+    key = _token_key(token)
+
+    # ── 1. Cache kontrolü ─────────────────────────────────────────────────────
+    try:
+        cached = r.get(key)
+        if cached:
+            print(f"[circuit-breaker] Cache HIT → {cached}")
+            return cached
+    except Exception as e:
+        print(f"[circuit-breaker] Cache okuma hatası: {e}")
+
+    # ── 2. Circuit breaker kontrolü ───────────────────────────────────────────
+    try:
+        state = r.get(CIRCUIT_KEY)
+        if state == "open":
+            print("[circuit-breaker] Circuit OPEN → 503")
+            raise HTTPException(
+                status_code=503,
+                detail="Auth Service geçici olarak kullanılamıyor. Lütfen kısa süre sonra tekrar deneyin."
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[circuit-breaker] Circuit state okuma hatası: {e}")
+
+    # ── 3. Auth Service'e istek ───────────────────────────────────────────────
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"{auth_service_url}/api/auth/verify",
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=3  # 5sn → 3sn, Traefik timeout'undan önce bitsin
+            )
+
+        if resp.status_code == 200:
+            email = resp.json()["email"]
+            try:
+                r.setex(key, TOKEN_TTL, email)
+                r.delete(FAIL_COUNT_KEY)
+                r.delete(CIRCUIT_KEY)
+            except Exception:
+                pass
+            return email
+
+        # 401/403: token geçersiz, circuit açma
+        raise HTTPException(status_code=401, detail="Token geçersiz")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        # Network hatası veya timeout → fail sayacını artır
+        print(f"[circuit-breaker] Auth Service hatası: {e}")
+        try:
+            count = r.incr(FAIL_COUNT_KEY)
+            r.expire(FAIL_COUNT_KEY, CIRCUIT_OPEN_TTL * 2)
+            print(f"[circuit-breaker] Fail count: {count}/{FAIL_THRESHOLD}")
+
+            if count >= FAIL_THRESHOLD:
+                r.setex(CIRCUIT_KEY, CIRCUIT_OPEN_TTL, "open")
+                r.delete(FAIL_COUNT_KEY)
+                print("[circuit-breaker] Circuit AÇILDI — 30sn sonra half-open")
+        except Exception:
+            pass
+
+        raise HTTPException(status_code=503, detail="Auth Service'e ulaşılamıyor")
+
+
+async def _direct_auth(token: str, auth_service_url: str) -> str:
+    """Redis yokken doğrudan Auth Service çağrısı."""
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"{auth_service_url}/api/auth/verify",
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=3
+            )
+            if resp.status_code == 200:
+                return resp.json()["email"]
+    except Exception:
+        pass
+    raise HTTPException(status_code=401, detail="Token geçersiz")
+</file>
+
+<file path="deploy-service/Dockerfile">
+FROM python:3.10-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY . .
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8003"]
+</file>
+
+<file path="deploy-service/secrets_helper.py">
+# secrets_helper.py
+# Her servisin klasorune bu dosyayi kopyala.
+# main.py basina: from secrets_helper import get_secret
+
+import os
+
+def get_secret(name: str, env_fallback: str = None) -> str:
+    """
+    Once /run/secrets/<name> dosyasini okur (Docker Secrets).
+    Dosya yoksa env_fallback environment variable'ina bakar.
+    Ikisi de yoksa hata firlatir.
+
+    Kullanim:
+        JWT_SECRET    = get_secret("jwt_secret",          "JWT_SECRET")
+        WEBHOOK_SEC   = get_secret("webhook_secret",      "WEBHOOK_SECRET")
+        GH_SECRET     = get_secret("github_client_secret","GITHUB_CLIENT_SECRET")
+        NGROK_TOKEN   = get_secret("ngrok_authtoken",     "NGROK_AUTHTOKEN")
+    """
+    secret_path = f"/run/secrets/{name}"
+    if os.path.exists(secret_path):
+        with open(secret_path) as f:
+            return f.read().strip()
+
+    fallback_key = env_fallback or name.upper()
+    value = os.getenv(fallback_key)
+    if value:
+        return value
+
+    raise RuntimeError(
+        f"Secret '{name}' bulunamadi. "
+        f"Ne /run/secrets/{name} dosyasi ne de {fallback_key} env var mevcut."
+    )
+</file>
+
+<file path="github-service/circuit_breaker.py">
+# circuit_breaker.py
+# deploy-service ve github-service klasörlerine kopyala.
+
+import hashlib
+import os
+import httpx
+import redis as redis_lib
+
+from fastapi import HTTPException
+
+REDIS_URL        = os.getenv("REDIS_URL", "redis://redis:6379")
+CIRCUIT_KEY      = "circuit:auth_service"
+FAIL_COUNT_KEY   = "circuit:auth_fail_count"
+TOKEN_TTL        = 60    # saniye
+CIRCUIT_OPEN_TTL = 30    # saniye
+FAIL_THRESHOLD   = 3
+
+# Modül yüklenince bir kez bağlantı kur, tekrar kullan
+_redis = None
+
+def get_redis():
+    global _redis
+    if _redis is not None:
+        try:
+            _redis.ping()
+            return _redis
+        except Exception:
+            _redis = None
+    try:
+        r = redis_lib.from_url(
+            REDIS_URL,
+            socket_connect_timeout=1,
+            socket_timeout=1,
+            decode_responses=True
+        )
+        r.ping()
+        _redis = r
+        return _redis
+    except Exception:
+        return None
+
+
+def _token_key(token: str) -> str:
+    return "token:" + hashlib.sha256(token.encode()).hexdigest()[:32]
+
+
+async def verify_token_with_circuit_breaker(token: str, auth_service_url: str) -> str:
+    """
+    Token doğrulama — Redis cache + circuit breaker.
+
+    Akış:
+    1. Redis cache hit → direkt dön (Auth Service'e gitme)
+    2. Circuit 'open' → 503 dön
+    3. Auth Service'e istek at (timeout: 3sn)
+       - Başarılı → cache'e yaz, fail sıfırla
+       - Hata → fail artır, eşik aşıldıysa circuit aç
+    4. Redis yoksa → Auth Service'e direkt git
+    """
+    r = get_redis()
+
+    # ── FALLBACK: Redis erişilemiyorsa direkt Auth Service ────────────────────
+    if r is None:
+        return await _direct_auth(token, auth_service_url)
+
+    key = _token_key(token)
+
+    # ── 1. Cache kontrolü ─────────────────────────────────────────────────────
+    try:
+        cached = r.get(key)
+        if cached:
+            print(f"[circuit-breaker] Cache HIT → {cached}")
+            return cached
+    except Exception as e:
+        print(f"[circuit-breaker] Cache okuma hatası: {e}")
+
+    # ── 2. Circuit breaker kontrolü ───────────────────────────────────────────
+    try:
+        state = r.get(CIRCUIT_KEY)
+        if state == "open":
+            print("[circuit-breaker] Circuit OPEN → 503")
+            raise HTTPException(
+                status_code=503,
+                detail="Auth Service geçici olarak kullanılamıyor. Lütfen kısa süre sonra tekrar deneyin."
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[circuit-breaker] Circuit state okuma hatası: {e}")
+
+    # ── 3. Auth Service'e istek ───────────────────────────────────────────────
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"{auth_service_url}/api/auth/verify",
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=3  # 5sn → 3sn, Traefik timeout'undan önce bitsin
+            )
+
+        if resp.status_code == 200:
+            email = resp.json()["email"]
+            try:
+                r.setex(key, TOKEN_TTL, email)
+                r.delete(FAIL_COUNT_KEY)
+                r.delete(CIRCUIT_KEY)
+            except Exception:
+                pass
+            return email
+
+        # 401/403: token geçersiz, circuit açma
+        raise HTTPException(status_code=401, detail="Token geçersiz")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        # Network hatası veya timeout → fail sayacını artır
+        print(f"[circuit-breaker] Auth Service hatası: {e}")
+        try:
+            count = r.incr(FAIL_COUNT_KEY)
+            r.expire(FAIL_COUNT_KEY, CIRCUIT_OPEN_TTL * 2)
+            print(f"[circuit-breaker] Fail count: {count}/{FAIL_THRESHOLD}")
+
+            if count >= FAIL_THRESHOLD:
+                r.setex(CIRCUIT_KEY, CIRCUIT_OPEN_TTL, "open")
+                r.delete(FAIL_COUNT_KEY)
+                print("[circuit-breaker] Circuit AÇILDI — 30sn sonra half-open")
+        except Exception:
+            pass
+
+        raise HTTPException(status_code=503, detail="Auth Service'e ulaşılamıyor")
+
+
+async def _direct_auth(token: str, auth_service_url: str) -> str:
+    """Redis yokken doğrudan Auth Service çağrısı."""
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"{auth_service_url}/api/auth/verify",
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=3
+            )
+            if resp.status_code == 200:
+                return resp.json()["email"]
+    except Exception:
+        pass
+    raise HTTPException(status_code=401, detail="Token geçersiz")
+</file>
+
+<file path="github-service/database.py">
+import sqlite3
+import os
+
+DB_PATH = "data/github.db"
+
+def init_db():
+    os.makedirs("data", exist_ok=True)
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS github_tokens (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            email        TEXT NOT NULL UNIQUE,
+            github_token TEXT,
+            updated_at   TEXT NOT NULL
+        )
+    """)
+    # Deploy bilgisi — push-to-deploy için repo → kullanıcı eşlemesi
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS repo_mappings (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            repo_name    TEXT NOT NULL,
+            user_email   TEXT NOT NULL,
+            project_name TEXT NOT NULL,
+            updated_at   TEXT NOT NULL
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+def get_connection():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+</file>
+
+<file path="github-service/Dockerfile">
+FROM python:3.10-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY . .
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8002"]
+</file>
+
+<file path="github-service/secrets_helper.py">
+# secrets_helper.py
+# Her servisin klasorune bu dosyayi kopyala.
+# main.py basina: from secrets_helper import get_secret
+
+import os
+
+def get_secret(name: str, env_fallback: str = None) -> str:
+    """
+    Once /run/secrets/<name> dosyasini okur (Docker Secrets).
+    Dosya yoksa env_fallback environment variable'ina bakar.
+    Ikisi de yoksa hata firlatir.
+
+    Kullanim:
+        JWT_SECRET    = get_secret("jwt_secret",          "JWT_SECRET")
+        WEBHOOK_SEC   = get_secret("webhook_secret",      "WEBHOOK_SECRET")
+        GH_SECRET     = get_secret("github_client_secret","GITHUB_CLIENT_SECRET")
+        NGROK_TOKEN   = get_secret("ngrok_authtoken",     "NGROK_AUTHTOKEN")
+    """
+    secret_path = f"/run/secrets/{name}"
+    if os.path.exists(secret_path):
+        with open(secret_path) as f:
+            return f.read().strip()
+
+    fallback_key = env_fallback or name.upper()
+    value = os.getenv(fallback_key)
+    if value:
+        return value
+
+    raise RuntimeError(
+        f"Secret '{name}' bulunamadi. "
+        f"Ne /run/secrets/{name} dosyasi ne de {fallback_key} env var mevcut."
+    )
+</file>
+
+<file path="grafana/provisioning/dashboards/dashboard.yml">
+apiVersion: 1
+
+providers:
+  - name: 'Mini PaaS'
+    orgId: 1
+    folder: 'Mini PaaS'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    options:
+      path: /etc/grafana/provisioning/dashboards
+</file>
+
+<file path="grafana/provisioning/dashboards/mini-paas.json">
+{
+  "title": "Mini PaaS — Platform Overview",
+  "uid": "mini-paas-overview",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Traefik — Toplam HTTP İstek Sayısı",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "targets": [{
+        "expr": "sum(traefik_entrypoint_requests_total)",
+        "legendFormat": "Toplam İstek"
+      }],
+      "datasource": "Prometheus"
+    },
+    {
+      "id": 2,
+      "title": "Traefik — Aktif Bağlantılar",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "targets": [{
+        "expr": "sum(traefik_entrypoint_open_connections)",
+        "legendFormat": "Açık Bağlantı"
+      }],
+      "datasource": "Prometheus"
+    },
+    {
+      "id": 3,
+      "title": "Traefik — HTTP 4xx/5xx Hatalar",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "targets": [{
+        "expr": "sum(traefik_entrypoint_requests_total{code=~'4..|5..'})",
+        "legendFormat": "Hata Sayısı"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 10 },
+              { "color": "red", "value": 50 }
+            ]
+          }
+        }
+      },
+      "datasource": "Prometheus"
+    },
+    {
+      "id": 4,
+      "title": "Traefik — İstek Hızı (req/s)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "targets": [{
+        "expr": "sum(rate(traefik_entrypoint_requests_total[1m])) by (entrypoint)",
+        "legendFormat": "{{entrypoint}}"
+      }],
+      "datasource": "Prometheus"
+    },
+    {
+      "id": 5,
+      "title": "Traefik — Yanıt Süresi (ms)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "targets": [{
+        "expr": "histogram_quantile(0.95, sum(rate(traefik_entrypoint_request_duration_seconds_bucket[5m])) by (le)) * 1000",
+        "legendFormat": "p95 latency"
+      },{
+        "expr": "histogram_quantile(0.50, sum(rate(traefik_entrypoint_request_duration_seconds_bucket[5m])) by (le)) * 1000",
+        "legendFormat": "p50 latency"
+      }],
+      "datasource": "Prometheus"
+    },
+    {
+      "id": 6,
+      "title": "Traefik — Router Bazında İstekler",
+      "type": "bargauge",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 12 },
+      "targets": [{
+        "expr": "sum(traefik_router_requests_total) by (router)",
+        "legendFormat": "{{router}}"
+      }],
+      "datasource": "Prometheus"
+    }
+  ]
+}
+</file>
+
+<file path="grafana/provisioning/datasources/prometheus.yml">
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+</file>
+
+<file path="swarm-deploy.sh">
+#!/bin/bash
+# ══════════════════════════════════════════════════════════════
+#  Mini PaaS — Swarm Kurulum ve Deploy Scripti
+#  Kullanım: bash swarm-deploy.sh
+# ══════════════════════════════════════════════════════════════
+
+set -e  # Hata olursa dur
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+log()  { echo -e "${GREEN}[✓]${NC} $1"; }
+warn() { echo -e "${YELLOW}[!]${NC} $1"; }
+err()  { echo -e "${RED}[✗]${NC} $1"; exit 1; }
+info() { echo -e "${BLUE}[→]${NC} $1"; }
+
+echo ""
+echo "╔══════════════════════════════════════╗"
+echo "║     Mini PaaS — Swarm Deploy         ║"
+echo "╚══════════════════════════════════════╝"
+echo ""
+
+# ── 1. .env kontrolü ──────────────────────────────────────────
+if [ ! -f ".env" ]; then
+    warn ".env dosyası bulunamadı, .env.example'dan kopyalanıyor..."
+    cp .env.example .env
+    err ".env dosyasını düzenleyin ve scripti tekrar çalıştırın: nano .env"
+fi
+log ".env dosyası mevcut"
+
+# ── 2. Docker Swarm init ───────────────────────────────────────
+SWARM_STATUS=$(docker info --format '{{.Swarm.LocalNodeState}}' 2>/dev/null || echo "inactive")
+
+if [ "$SWARM_STATUS" = "inactive" ]; then
+    info "Docker Swarm başlatılıyor..."
+    docker swarm init
+    log "Swarm başlatıldı (manager node)"
+else
+    log "Swarm zaten aktif (durum: $SWARM_STATUS)"
+fi
+
+# Worker node token'ını göster
+echo ""
+warn "Worker node eklemek istiyorsanız aşağıdaki komutu diğer makinede çalıştırın:"
+echo "─────────────────────────────────────────────────────"
+docker swarm join-token worker 2>/dev/null | grep "docker swarm join" || true
+echo "─────────────────────────────────────────────────────"
+echo ""
+
+# ── 3. Docker image'ları build et ─────────────────────────────
+info "API Gateway image build ediliyor..."
+docker build -t mini-paas-api:latest ./api-gateway
+log "API Gateway image hazır"
+
+info "Builder Service image build ediliyor..."
+docker build -t mini-paas-builder:latest ./builder-service
+log "Builder Service image hazır"
+
+# ── 4. paas-net overlay network oluştur ───────────────────────
+if ! docker network ls | grep -q "paas-net"; then
+    info "paas-net overlay network oluşturuluyor..."
+    docker network create --driver overlay --attachable paas-net
+    log "paas-net oluşturuldu"
+else
+    log "paas-net zaten mevcut"
+fi
+
+# ── 5. Stack deploy ───────────────────────────────────────────
+info "Stack deploy ediliyor..."
+docker stack deploy -c docker-stack.yml paas --with-registry-auth
+log "Stack deploy edildi"
+
+# ── 6. Servislerin ayağa kalkmasını bekle ─────────────────────
+echo ""
+info "Servisler başlatılıyor, bekleniyor..."
+sleep 8
+
+# ── 7. Durum raporu ───────────────────────────────────────────
+echo ""
+echo "╔══════════════════════════════════════╗"
+echo "║         Servis Durumu                ║"
+echo "╚══════════════════════════════════════╝"
+docker stack services paas
+
+echo ""
+log "Deploy tamamlandı!"
+echo ""
+echo "  🌐  Dashboard   → http://localhost:8090"
+echo "  🔌  API         → http://localhost:5001"
+echo "  📊  Grafana     → http://localhost:3000  (admin / \${GRAFANA_PASSWORD:-admin})"
+echo "  🔥  Prometheus  → http://localhost:9090"
+echo "  🚦  Traefik UI  → http://localhost:8080"
+echo ""
+echo "  Logları görmek için:"
+echo "  docker service logs paas_api-gateway -f"
+echo "  docker service logs paas_builder-service -f"
+echo ""
+</file>
+
+<file path=".gitignore">
+.env
+data/paas_data.db
+__pycache__/
+*.pyc
+workspace/
+</file>
+
+<file path="auth-service/main.py">
+from fastapi import FastAPI, HTTPException, Depends
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
+from datetime import datetime, timedelta
+from jose import JWTError, jwt
+import hashlib, hmac, secrets, base64, re, os
+from typing import Optional
+from secrets_helper import get_secret
+
+from database import init_db, get_connection
+
+SECRET_KEY = get_secret("jwt_secret", "JWT_SECRET")
+ALGORITHM          = "HS256"
+TOKEN_EXPIRE_HOURS = 24
+
+bearer = HTTPBearer()
+app = FastAPI(title="Auth Service")
+
+os.makedirs("data", exist_ok=True)
+init_db()
+
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+# ─── Models ───────────────────────────────────────────────────
+class RegisterRequest(BaseModel):
+    email:    str
+    password: str
+
+class LoginRequest(BaseModel):
+    email:    str
+    password: str
+
+# ─── Password ─────────────────────────────────────────────────
+def hash_password(password: str) -> str:
+    salt = secrets.token_hex(16)
+    h    = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 260_000)
+    return salt + ":" + base64.b64encode(h).decode()
+
+def check_password(password: str, stored: str) -> bool:
+    try:
+        salt, b64 = stored.split(":", 1)
+        h_new = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 260_000)
+        return hmac.compare_digest(base64.b64decode(b64), h_new)
+    except Exception:
+        return False
+
+# ─── Validation ───────────────────────────────────────────────
+EMAIL_RE = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]{2,}$')
+
+def validate_email(email: str) -> bool:
+    return bool(EMAIL_RE.match(email.strip()))
+
+def validate_password(password: str) -> Optional[str]:
+    if len(password) < 8:
+        return "Şifre en az 8 karakter olmalı"
+    if not re.search(r'[A-Z]', password):
+        return "En az bir büyük harf içermeli (A-Z)"
+    if not re.search(r'[a-z]', password):
+        return "En az bir küçük harf içermeli (a-z)"
+    if not re.search(r'[0-9]', password):
+        return "En az bir rakam içermeli (0-9)"
+    return None
+
+# ─── JWT ──────────────────────────────────────────────────────
+def create_token(email: str) -> str:
+    return jwt.encode(
+        {"sub": email, "exp": datetime.utcnow() + timedelta(hours=TOKEN_EXPIRE_HOURS)},
+        SECRET_KEY, algorithm=ALGORITHM
+    )
+
+def verify_token(credentials: HTTPAuthorizationCredentials = Depends(bearer)) -> str:
+    try:
+        payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
+        email   = payload.get("sub")
+        if not email:
+            raise HTTPException(status_code=401, detail="Geçersiz token")
+        return email
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Token geçersiz veya süresi dolmuş")
+
+# ─── Endpoints ────────────────────────────────────────────────
+@app.post("/api/register")
+async def register(req: RegisterRequest):
+    email = req.email.lower().strip()
+    if not validate_email(email):
+        raise HTTPException(status_code=400, detail="Geçerli bir e-posta adresi girin")
+    pw_err = validate_password(req.password)
+    if pw_err:
+        raise HTTPException(status_code=400, detail=pw_err)
+    conn = get_connection()
+    if conn.execute("SELECT id FROM users WHERE email=?", (email,)).fetchone():
+        conn.close()
+        raise HTTPException(status_code=409, detail="Bu e-posta zaten kayıtlı")
+    hashed = hash_password(req.password)
+    conn.execute("INSERT INTO users (email, password, created_at) VALUES (?,?,?)",
+                 (email, hashed, datetime.utcnow().isoformat()))
+    conn.commit()
+    conn.close()
+    return {"token": create_token(email), "email": email, "message": "Kayıt başarılı"}
+
+@app.post("/api/login")
+async def login(req: LoginRequest):
+    email = req.email.lower().strip()
+    conn  = get_connection()
+    row   = conn.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
+    conn.close()
+    if not row or not check_password(req.password, row["password"]):
+        raise HTTPException(status_code=401, detail="E-posta veya şifre hatalı")
+    return {"token": create_token(email), "email": email, "message": "Giriş başarılı"}
+
+@app.get("/api/me")
+async def me(email: str = Depends(verify_token)):
+    return {"email": email}
+
+@app.get("/api/auth/verify")
+async def verify_token_endpoint(email: str = Depends(verify_token)):
+    """Diğer servisler token doğrulamak için bu endpoint'i çağırır."""
+    return {"email": email, "valid": True}
+
+@app.get("/health")
+async def health():
+    try:
+        conn = get_connection()
+        conn.execute("SELECT 1").fetchone()
+        conn.close()
+        return {"status": "ok", "service": "auth-service"}
+    except Exception as e:
+        return {"status": "error", "detail": str(e)}
+
+# Static files en sona mount edilmeli
+app.mount("/", StaticFiles(directory="static", html=True), name="static")
+</file>
+
+<file path="auth-service/static/index.html">
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mini PaaS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#0a0a0a;--bg-1:#111;--bg-2:#161616;--bg-3:#1e1e1e;--bg-4:#252525;
+  --border:rgba(255,255,255,.06);--border-md:rgba(255,255,255,.1);--border-lg:rgba(255,255,255,.16);
+  --text:#ededed;--text-2:#a1a1a1;--text-3:#555;--text-4:#2e2e2e;
+  --blue:#0070f3;--blue-2:#338ef7;--green:#00c950;--red:#f31260;--amber:#f5a524;
+  --mono:'Geist Mono',monospace;--sans:'DM Sans',sans-serif;
+  --r:8px;--r-lg:12px;--sidebar:220px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;width:100%;overflow:hidden}
+body{font-family:var(--sans);background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased}
+
+/* ── LAYOUT ───────────────────────────────────────────────── */
+.app{display:flex;width:100%;height:100vh}
+
+/* ── SIDEBAR ──────────────────────────────────────────────── */
+.sidebar{width:var(--sidebar);flex-shrink:0;background:var(--bg-1);border-right:1px solid var(--border);display:flex;flex-direction:column;height:100vh}
+.sb-brand{padding:14px 12px 12px;border-bottom:1px solid var(--border)}
+.sb-logo{display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:var(--r);cursor:pointer;user-select:none;margin-bottom:10px}
+.sb-logo:hover{background:var(--bg-3)}
+.logo-mark{width:22px;height:22px;background:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.logo-mark svg{width:10px;height:10px}
+.sb-logo-text{font-size:13px;font-weight:600;letter-spacing:-.3px}
+.sb-user{display:flex;align-items:center;gap:7px;padding:6px 8px;border-radius:var(--r);background:var(--bg-3);border:1px solid var(--border)}
+.sb-user-dot{width:6px;height:6px;background:var(--green);border-radius:50%;flex-shrink:0}
+.sb-user-email{font-size:11.5px;color:var(--text-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.sb-nav{flex:1;overflow-y:auto;padding:8px}
+.sb-nav-label{font-size:10px;font-weight:500;color:var(--text-3);text-transform:uppercase;letter-spacing:.7px;padding:6px 8px 4px}
+.sb-nav-item{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:var(--r);cursor:pointer;font-size:12.5px;color:var(--text-2);transition:all .12s;margin-bottom:1px;user-select:none}
+.sb-nav-item:hover{background:var(--bg-3);color:var(--text)}
+.sb-nav-item.active{background:var(--bg-3);color:var(--text);border:1px solid var(--border-md)}
+.sb-nav-item svg{flex-shrink:0;opacity:.6}
+.sb-nav-item.active svg{opacity:1}
+.sb-nav-item .soon{font-size:9px;padding:1px 5px;background:var(--bg-4);border:1px solid var(--border);border-radius:100px;color:var(--text-3);margin-left:auto}
+.sb-bottom{border-top:1px solid var(--border);padding:8px}
+.sb-bottom-item{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:var(--r);cursor:pointer;font-size:12px;color:var(--text-2);transition:background .12s}
+.sb-bottom-item:hover{background:var(--bg-3);color:var(--text)}
+.sidebar.hidden { display: none; }
+
+/* ── MAIN ─────────────────────────────────────────────────── */
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
+.page{display:none;flex:1;flex-direction:column;overflow:hidden;min-height:0}
+.page.active{display:flex}
+#page-home{overflow-y:auto}
+#page-auth{align-items:center;justify-content:center;overflow-y:auto}
+
+/* ── TOPBAR ───────────────────────────────────────────────── */
+.topbar{height:48px;border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 24px;gap:8px;flex-shrink:0;background:var(--bg-1)}
+.topbar-title{font-size:13.5px;font-weight:500}
+.topbar-sep{color:var(--text-4);font-size:18px;font-weight:300}
+.topbar-sub{font-size:13px;color:var(--text-2)}
+.topbar-actions{margin-left:auto;display:flex;align-items:center;gap:6px}
+.scroll-area{flex:1;overflow-y:auto}
+
+/* ── HOME ─────────────────────────────────────────────────── */
+.home-hero{padding:80px 40px 50px;max-width:620px;margin:0 auto;text-align:center}
+.home-badge{display:inline-flex;align-items:center;gap:6px;padding:4px 12px;background:var(--bg-2);border:1px solid var(--border-md);border-radius:100px;font-size:11px;color:var(--text-2);margin-bottom:24px}
+.home-badge-dot{width:5px;height:5px;background:var(--blue-2);border-radius:50%;animation:blink 2.5s ease-in-out infinite}
+.home-h1{font-size:clamp(34px,5vw,54px);font-weight:600;line-height:1.08;letter-spacing:-2px;margin-bottom:16px;background:linear-gradient(150deg,#fff 40%,#444 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.home-sub{font-size:15px;color:var(--text-2);max-width:400px;margin:0 auto 28px;line-height:1.65}
+.home-cta{display:flex;gap:10px;justify-content:center}
+.home-feats{max-width:720px;margin:0 auto;padding:0 40px 60px;display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border);border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden}
+.home-feat{background:var(--bg-1);padding:20px;transition:background .2s}.home-feat:hover{background:var(--bg-2)}
+.home-feat-ico{font-size:18px;margin-bottom:10px}
+.home-feat-t{font-size:13px;font-weight:600;margin-bottom:5px}
+.home-feat-d{font-size:11.5px;color:var(--text-2);line-height:1.6}
+
+/* ── AUTH ─────────────────────────────────────────────────── */
+.auth-wrap{width:100%;max-width:356px;padding:20px}
+.auth-card{background:var(--bg-1);border:1px solid var(--border-md);border-radius:var(--r-lg);padding:26px;box-shadow:0 20px 60px rgba(0,0,0,.8)}
+.auth-hd{text-align:center;margin-bottom:20px}
+.auth-logo{width:34px;height:34px;background:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 10px}
+.auth-logo svg{width:15px;height:15px}
+.auth-title{font-size:16px;font-weight:600;letter-spacing:-.4px;margin-bottom:3px}
+.auth-dsub{font-size:11.5px;color:var(--text-2)}
+.tabs{display:flex;background:var(--bg-3);border:1px solid var(--border);border-radius:6px;padding:3px;margin-bottom:16px}
+.tab{flex:1;height:26px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:500;border-radius:4px;cursor:pointer;color:var(--text-3);transition:all .15s;user-select:none}
+.tab.active{background:var(--bg-2);border:1px solid var(--border-md);color:var(--text)}
+.auth-form{display:flex;flex-direction:column;gap:11px}
+.aerr{display:none;padding:8px 10px;background:rgba(243,18,96,.07);border:1px solid rgba(243,18,96,.18);border-radius:6px;font-size:11.5px;color:#ff6b9d;line-height:1.5}
+.aerr.on{display:block}
+.auth-ft{margin-top:12px;text-align:center;font-size:11.5px;color:var(--text-3)}
+.auth-ft a{color:var(--text-2);cursor:pointer}.auth-ft a:hover{color:var(--text)}
+.str-bar{height:2px;background:var(--bg-3);border-radius:100px;overflow:hidden;margin-top:-4px}
+.str-fill{height:100%;border-radius:100px;transition:width .3s,background .3s;width:0}
+.str-hint{font-size:10.5px;color:var(--text-3);margin-top:-4px;min-height:13px}
+.pw-wrap{position:relative}
+.pw-wrap .inp{padding-right:34px}
+.pw-toggle{position:absolute;right:9px;top:50%;transform:translateY(-50%);background:transparent;border:none;cursor:pointer;color:var(--text-3);font-size:13px;padding:0;line-height:1}
+
+/* ── PROJECTS ─────────────────────────────────────────────── */
+.new-project-bar{padding:16px 24px;border-bottom:1px solid var(--border);background:var(--bg-1);flex-shrink:0}
+.new-project-title{font-size:10.5px;font-weight:500;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px}
+.new-project-row{display:flex;gap:8px;align-items:flex-end}
+.new-project-row .field{flex:1}
+.new-project-row .field:first-child{max-width:170px}
+.projects-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;padding:24px}
+.proj-card{background:var(--bg-1);border:1px solid var(--border-md);border-radius:var(--r-lg);padding:18px;cursor:pointer;transition:all .15s}
+.proj-card:hover{background:var(--bg-2);border-color:var(--border-lg);transform:translateY(-1px)}
+.proj-card-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.proj-card-icon{width:32px;height:32px;background:var(--bg-3);border:1px solid var(--border-md);border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:12px;font-family:var(--mono);font-weight:500;color:var(--text-2)}
+.proj-card-status{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text-2)}
+.proj-card-dot{width:6px;height:6px;border-radius:50%}
+.proj-card-dot.running{background:var(--green);animation:blink 2s infinite}
+.proj-card-dot.failed{background:var(--red)}
+.proj-card-dot.stopped{background:var(--text-3)}
+.proj-card-dot.pending,.proj-card-dot.building{background:var(--amber);animation:blink 1.2s infinite}
+.proj-card-name{font-size:14px;font-weight:600;margin-bottom:4px;letter-spacing:-.2px}
+.proj-card-repo{font-size:11px;color:var(--text-2);font-family:var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:12px}
+.proj-card-footer{display:flex;align-items:center;justify-content:space-between;padding-top:10px;border-top:1px solid var(--border)}
+.proj-card-meta{font-size:10.5px;color:var(--text-3)}
+.proj-card-actions{display:flex;gap:4px}
+
+/* ── DEPLOYMENTS ──────────────────────────────────────────── */
+.filter-bar{display:flex;align-items:center;gap:8px;padding:12px 24px;border-bottom:1px solid var(--border);background:var(--bg-1);flex-shrink:0}
+.filter-select{height:30px;padding:0 10px;background:var(--bg-2);border:1px solid var(--border-md);border-radius:6px;color:var(--text-2);font-family:var(--sans);font-size:12px;outline:none;cursor:pointer;min-width:150px}
+.filter-select option{background:var(--bg-2)}
+.kpi-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border);border-bottom:1px solid var(--border);flex-shrink:0}
+.kpi-item{background:var(--bg-1);padding:12px 20px}
+.kpi-label{font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.7px;font-family:var(--mono);margin-bottom:5px}
+.kpi-value{font-size:20px;font-weight:600;letter-spacing:-1px;font-family:var(--mono)}
+.kpi-value.g{color:var(--green)}.kpi-value.r{color:var(--red)}.kpi-value.a{color:var(--amber)}
+.tbl-wrap{padding:16px 24px 24px}
+.tbl-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.tbl-title{font-size:12px;font-weight:500;color:var(--text-2);display:flex;align-items:center;gap:6px}
+.cnt-badge{padding:1px 6px;background:var(--bg-3);border:1px solid var(--border);border-radius:100px;font-size:10px;color:var(--text-3);font-family:var(--mono)}
+.tbl{background:var(--bg-1);border:1px solid var(--border-md);border-radius:var(--r-lg);overflow:hidden}
+.tbl-head{display:grid;grid-template-columns:40px 130px 1fr 110px 84px 170px;padding:8px 16px;background:var(--bg-2);border-bottom:1px solid var(--border);font-size:10px;font-weight:500;color:var(--text-3);text-transform:uppercase;letter-spacing:.6px;font-family:var(--mono)}
+.tbl-row{display:grid;grid-template-columns:40px 130px 1fr 110px 84px 170px;padding:0 16px;height:48px;align-items:center;border-bottom:1px solid var(--border);transition:background .12s;font-size:12px}
+.tbl-row:last-child{border-bottom:none}
+.tbl-row:hover{background:rgba(255,255,255,.02)}
+.tr-id{font-family:var(--mono);font-size:10px;color:var(--text-3)}
+.tr-name{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:8px}
+.tr-url{font-size:10.5px;color:var(--text-2);font-family:var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:8px}
+.tr-time{font-size:10px;color:var(--text-3);font-family:var(--mono)}
+.tr-actions{display:flex;align-items:center;gap:4px}
+.act-btn{display:inline-flex;align-items:center;gap:3px;height:24px;padding:0 8px;border-radius:5px;font-size:11px;font-weight:500;cursor:pointer;border:none;transition:all .15s;font-family:var(--sans)}
+.act-open{background:rgba(51,142,247,.1);color:var(--blue-2);border:1px solid rgba(51,142,247,.2)}.act-open:hover{background:rgba(51,142,247,.18)}
+.act-redeploy{background:rgba(0,201,80,.08);color:var(--green);border:1px solid rgba(0,201,80,.2)}.act-redeploy:hover{background:rgba(0,201,80,.15)}
+.act-log{background:rgba(245,165,36,.08);color:var(--amber);border:1px solid rgba(245,165,36,.2)}.act-log:hover{background:rgba(245,165,36,.15)}
+.act-stop{background:rgba(243,18,96,.08);color:var(--red);border:1px solid rgba(243,18,96,.2)}.act-stop:hover{background:rgba(243,18,96,.15)}
+.act-del{background:transparent;color:var(--text-3);border:1px solid transparent;padding:0 5px}.act-del:hover{background:rgba(243,18,96,.08);color:var(--red);border-color:rgba(243,18,96,.2)}
+.chip{display:inline-flex;align-items:center;gap:4px;padding:2px 7px;border-radius:100px;font-size:10px;font-weight:500;font-family:var(--mono)}
+.chip-d{width:4px;height:4px;border-radius:50%;flex-shrink:0}
+.chip.running{background:rgba(0,201,80,.09);color:var(--green);border:1px solid rgba(0,201,80,.18)}.chip.running .chip-d{background:var(--green);animation:blink 2s infinite}
+.chip.pending,.chip.building{background:rgba(245,165,36,.09);color:var(--amber);border:1px solid rgba(245,165,36,.18)}.chip.pending .chip-d,.chip.building .chip-d{background:var(--amber);animation:blink 1.2s infinite}
+.chip.failed{background:rgba(243,18,96,.07);color:var(--red);border:1px solid rgba(243,18,96,.18)}.chip.failed .chip-d{background:var(--red)}
+.chip.stopped{background:var(--bg-3);color:var(--text-3);border:1px solid var(--border-md)}.chip.stopped .chip-d{background:var(--text-4)}
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px 20px;gap:8px}
+.empty-ic{width:36px;height:36px;border:1px solid var(--border-md);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;background:var(--bg-2);margin-bottom:4px}
+.empty-t{font-size:13px;font-weight:500}.empty-s{font-size:11.5px;color:var(--text-3);text-align:center;max-width:220px;line-height:1.55}
+
+/* ── LOGS ─────────────────────────────────────────────────── */
+.logs-toolbar{display:flex;align-items:center;gap:8px;padding:12px 24px;border-bottom:1px solid var(--border);background:var(--bg-1);flex-shrink:0}
+.logs-body{flex:1;overflow-y:auto;padding:16px 24px;font-family:var(--mono);font-size:11.5px;line-height:1.9}
+.log-line{display:flex;align-items:baseline;gap:10px;padding:2px 0;border-bottom:1px solid rgba(255,255,255,.02)}
+.log-line:hover{background:rgba(255,255,255,.02)}
+.log-time{color:var(--text-3);font-size:10px;flex-shrink:0;width:65px}
+.log-level{font-size:9.5px;font-weight:600;width:36px;flex-shrink:0;text-transform:uppercase}
+.log-level.ok{color:var(--green)}
+.log-level.er{color:var(--red)}
+.log-level.warn{color:var(--amber)}
+.log-level.inf{color:var(--blue-2)}
+.log-msg{color:var(--text-2);word-break:break-all}
+.log-msg.ok{color:var(--green)}
+.log-msg.er{color:var(--red)}
+.log-msg.warn{color:var(--amber)}
+.log-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:8px;color:var(--text-3)}
+.coming-soon{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:8px}
+.coming-soon-ico{font-size:26px;margin-bottom:4px}
+.coming-soon-t{font-size:13px;font-weight:500;color:var(--text-2)}
+.coming-soon-s{font-size:11.5px;color:var(--text-3)}
+
+/* ── BUTTONS ──────────────────────────────────────────────── */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:0 12px;height:30px;border-radius:6px;font-family:var(--sans);font-size:12.5px;font-weight:500;cursor:pointer;border:none;transition:all .15s;white-space:nowrap;user-select:none}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn-ghost{background:transparent;color:var(--text-2);border:1px solid transparent}.btn-ghost:hover:not(:disabled){background:var(--bg-3);border-color:var(--border);color:var(--text)}
+.btn-outline{background:transparent;color:var(--text);border:1px solid var(--border-md)}.btn-outline:hover:not(:disabled){background:var(--bg-2)}
+.btn-white{background:#fff;color:#000;font-weight:600}.btn-white:hover:not(:disabled){background:#e5e5e5}
+.btn-blue{background:var(--blue);color:#fff;font-weight:600}.btn-blue:hover:not(:disabled){background:#0060d3}
+.btn-red{background:rgba(243,18,96,.1);color:var(--red);border:1px solid rgba(243,18,96,.2)}.btn-red:hover:not(:disabled){background:rgba(243,18,96,.18)}
+.btn-lg{height:36px;padding:0 16px;font-size:13px;border-radius:8px}
+.btn-xl{height:42px;padding:0 20px;font-size:14px;border-radius:9px}
+.btn-full{width:100%}
+.spin{display:none;width:12px;height:12px;border:2px solid rgba(255,255,255,.2);border-top-color:#fff;border-radius:50%;animation:rot .6s linear infinite}
+.btn-white .spin{border-color:rgba(0,0,0,.15);border-top-color:#000}
+@keyframes rot{to{transform:rotate(360deg)}}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* ── INPUTS ───────────────────────────────────────────────── */
+.field{display:flex;flex-direction:column;gap:4px}
+.label{font-size:11px;font-weight:500;color:var(--text-2)}
+.inp{width:100%;padding:0 10px;height:32px;background:var(--bg-2);border:1px solid var(--border-md);border-radius:6px;color:var(--text);font-family:var(--sans);font-size:12.5px;outline:none;transition:border-color .15s,box-shadow .15s}
+.inp:focus{border-color:rgba(255,255,255,.24);box-shadow:0 0 0 3px rgba(255,255,255,.04)}
+.inp::placeholder{color:var(--text-4)}
+.inp.mono{font-family:var(--mono);font-size:11.5px}
+.inp.err{border-color:rgba(243,18,96,.5)}
+.hint{font-size:11px;color:var(--text-3);margin-top:6px;display:flex;align-items:center;gap:4px}
+.kbd{padding:1px 5px;background:var(--bg-3);border:1px solid var(--border-md);border-radius:3px;font-family:var(--mono);font-size:9.5px;color:var(--text-2)}
+
+/* ── DRAWER ───────────────────────────────────────────────── */
+.drawer{display:none;position:fixed;bottom:0;left:var(--sidebar);right:0;background:var(--bg-1);border-top:1px solid var(--border-md);box-shadow:0 -6px 30px rgba(0,0,0,.6);z-index:200;flex-direction:column}
+.drawer.open{display:flex;animation:slideUp .2s ease both}
+.drawer.expanded{height:460px}.drawer.normal{height:260px}
+@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+.drawer-hd{padding:9px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.drawer-title{font-size:11px;font-weight:500;font-family:var(--mono);color:var(--text-2);display:flex;align-items:center;gap:6px}
+.drawer-status{padding:1px 6px;border-radius:4px;font-size:9.5px;font-family:var(--mono)}
+.drawer-status.running{background:rgba(0,201,80,.1);color:var(--green)}
+.drawer-status.building,.drawer-status.pending{background:rgba(245,165,36,.1);color:var(--amber)}
+.drawer-status.failed{background:rgba(243,18,96,.08);color:var(--red)}
+.drawer-hd-right{display:flex;align-items:center;gap:5px}
+.drawer-expand{background:transparent;border:none;color:var(--text-3);cursor:pointer;font-size:12px;padding:2px 5px;border-radius:4px;line-height:1}.drawer-expand:hover{color:var(--text-2);background:var(--bg-3)}
+.drawer-body{flex:1;overflow-y:auto;padding:10px 14px;font-family:var(--mono);font-size:11px;line-height:1.9;color:#555}
+.drawer-body::-webkit-scrollbar{width:3px}.drawer-body::-webkit-scrollbar-thumb{background:var(--bg-4);border-radius:2px}
+.ll{display:block;padding:1px 0}
+.ll.ok{color:var(--green)}.ll.er{color:var(--red)}.ll.inf{color:var(--blue-2)}.ll.warn{color:var(--amber)}.ll.ts{color:var(--text-3);font-size:10px}
+
+/* ── MODAL ────────────────────────────────────────────────── */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);z-index:400;align-items:center;justify-content:center}
+.modal-overlay.open{display:flex;animation:fadeIn .15s ease both}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.modal{background:var(--bg-1);border:1px solid var(--border-md);border-radius:var(--r-lg);padding:22px;width:100%;max-width:320px;box-shadow:0 20px 60px rgba(0,0,0,.8);animation:scaleIn .15s ease both}
+@keyframes scaleIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}
+.modal-icon{width:36px;height:36px;background:rgba(243,18,96,.08);border:1px solid rgba(243,18,96,.18);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;margin-bottom:12px}
+.modal-title{font-size:14px;font-weight:600;margin-bottom:5px}
+.modal-desc{font-size:12px;color:var(--text-2);line-height:1.55;margin-bottom:18px}
+.modal-desc strong{color:var(--text)}
+.modal-actions{display:flex;gap:7px;justify-content:flex-end}
+
+/* ── TOASTS ───────────────────────────────────────────────── */
+.toasts{position:fixed;bottom:16px;right:16px;display:flex;flex-direction:column;gap:6px;z-index:500;pointer-events:none}
+.toast{display:flex;align-items:center;gap:8px;padding:9px 12px;background:var(--bg-2);border:1px solid var(--border-md);border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,.5);font-size:12px;min-width:220px;animation:sIn .18s ease both;pointer-events:all}
+.toast.success{border-color:rgba(0,201,80,.2)}.toast.error{border-color:rgba(243,18,96,.2)}
+@keyframes sIn{from{opacity:0;transform:translateX(10px)}to{opacity:1;transform:translateX(0)}}
+@keyframes sOut{from{opacity:1}to{opacity:0;transform:translateX(10px)}}
+</style>
+</head>
+<body>
+<div class="app">
+
+<!-- SIDEBAR -->
+<aside class="sidebar hidden" id="sidebar">
+  <div class="sb-brand">
+    <div class="sb-logo" onclick="goHome()">
+      <div class="logo-mark"><svg viewBox="0 0 16 16" fill="none"><path d="M8 1L15 14H1L8 1Z" fill="black"/></svg></div>
+      <span class="sb-logo-text">Mini PaaS</span>
+    </div>
+    <div class="sb-user" id="sb-user" style="display:none">
+      <div class="sb-user-dot"></div>
+      <span class="sb-user-email" id="sb-user-email"></span>
+    </div>
+  </div>
+
+  <!-- Nav sadece giriş yapıldığında göster -->
+  <nav class="sb-nav" id="sb-nav" style="display:none">
+    <div class="sb-nav-label">Genel</div>
+    <div class="sb-nav-item active" id="nav-projects" onclick="navigate('projects')">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+      Projects
+    </div>
+    <div class="sb-nav-item" id="nav-deployments" onclick="navigate('deployments')">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/></svg>
+      Deployments
+    </div>
+    <div class="sb-nav-item" id="nav-logs" onclick="navigate('logs')">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+      Logs
+    </div>
+    <div class="sb-nav-item" id="nav-settings">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+      Settings <span class="soon">Yakında</span>
+    </div>
+  </nav>
+
+  <div class="sb-bottom">
+    <div id="sb-gh-connect" class="sb-bottom-item" onclick="connectGitHub()" style="display:none">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+      GitHub Bağla
+    </div>
+    <div id="sb-gh-connected" class="sb-bottom-item" onclick="disconnectGitHub()" style="display:none" title="Bağlantıyı kes">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+      <span style="color:var(--green);font-size:10px">✓</span> GitHub bağlı
+    </div>
+    <div class="sb-bottom-item" id="sb-logout" onclick="logout()" style="display:none">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+      Çıkış Yap
+    </div>
+    <div class="sb-bottom-item" id="sb-login" onclick="showAuth('login')">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"/></svg>
+      Giriş Yap
+    </div>
+  </div>
+</aside>
+
+<!-- MAIN -->
+<main class="main">
+
+  <!-- HOME -->
+  <div id="page-home" class="page active">
+    <div class="home-hero">
+      <div class="home-badge"><div class="home-badge-dot"></div>FastAPI · Docker · Traefik · ngrok</div>
+      <h1 class="home-h1">Deploy your app<br>in seconds.</h1>
+      <p class="home-sub">GitHub reponuzu verin, build'i, routing'i, her şeyi biz hallederiz.</p>
+      <div class="home-cta">
+        <button class="btn btn-white btn-xl" onclick="showAuth('register')">Ücretsiz Başla →</button>
+        <button class="btn btn-outline btn-xl" onclick="showAuth('login')">Giriş Yap</button>
+      </div>
+    </div>
+    <div class="home-feats">
+      <div class="home-feat"><div class="home-feat-ico">⚡</div><div class="home-feat-t">Otomatik Build</div><div class="home-feat-d">Dockerfile yoksa otomatik üretir.</div></div>
+      <div class="home-feat"><div class="home-feat-ico">🌐</div><div class="home-feat-t">Anlık Subdomain</div><div class="home-feat-d">Her deploy için subdomain hazır.</div></div>
+      <div class="home-feat"><div class="home-feat-ico">🔄</div><div class="home-feat-t">Push to Deploy</div><div class="home-feat-d">GitHub push → otomatik redeploy.</div></div>
+    </div>
+  </div>
+
+  <!-- AUTH -->
+  <div id="page-auth" class="page">
+    <div class="auth-wrap">
+      <div class="auth-card">
+        <div class="auth-hd">
+          <div class="auth-logo"><svg viewBox="0 0 16 16" fill="none"><path d="M8 1L15 14H1L8 1Z" fill="black"/></svg></div>
+          <div class="auth-title" id="at">Giriş Yap</div>
+          <div class="auth-dsub" id="as">Hesabına erişmek için bilgilerini gir</div>
+        </div>
+        <div class="tabs">
+          <div class="tab active" id="tl" onclick="switchTab('login')">Giriş Yap</div>
+          <div class="tab" id="tr" onclick="switchTab('register')">Kayıt Ol</div>
+        </div>
+        <div class="auth-form">
+          <div class="aerr" id="aerr"></div>
+          <div class="field"><label class="label">E-posta</label><input class="inp" id="au" type="email" placeholder="ornek@mail.com" oninput="clearAErr()" onkeydown="aEnter(event)"></div>
+          <div class="field"><label class="label">Şifre</label>
+            <div class="pw-wrap">
+              <input class="inp" id="ap" type="password" placeholder="••••••••" oninput="pwInput()" onkeydown="aEnter(event)">
+              <button class="pw-toggle" onclick="togglePw()">👁</button>
+            </div>
+          </div>
+          <div id="strwrap" style="display:none"><div class="str-bar"><div class="str-fill" id="sf"></div></div><div class="str-hint" id="str-hint"></div></div>
+          <button class="btn btn-white btn-lg btn-full" id="asub" onclick="doAuth()"><span class="spin" id="asp"></span><span id="asubt">Giriş Yap</span></button>
+        </div>
+        <div class="auth-ft"><span id="aft">Hesabın yok mu?</span><a onclick="switchTab(curTab==='login'?'register':'login')" id="afl"> Kayıt ol</a></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PROJECTS -->
+  <div id="page-projects" class="page">
+    <div class="topbar">
+      <span class="topbar-title">Projects</span>
+    </div>
+    <!-- New Project formu -->
+    <div class="new-project-bar">
+      <div class="new-project-title">Yeni Proje</div>
+      <div class="new-project-row">
+        <div class="field"><label class="label">Proje Adı</label><input class="inp" id="np-name" placeholder="my-app" onkeydown="npEnter(event)"></div>
+        <div class="field"><label class="label">GitHub URL</label><input class="inp mono" id="np-url" placeholder="https://github.com/user/repo" onkeydown="npEnter(event)"></div>
+        <button class="btn btn-blue btn-lg" id="np-btn" onclick="createProject()"><span class="spin" id="np-spin"></span>Oluştur</button>
+      </div>
+      <div class="hint"><span class="kbd">Enter</span> ile proje oluşturabilirsiniz</div>
+    </div>
+    <div class="scroll-area">
+      <div class="projects-grid" id="projects-grid">
+        <div class="empty" style="grid-column:1/-1"><div class="empty-ic">📦</div><div class="empty-t">Henüz proje yok</div><div class="empty-s">Yukarıdaki formu kullanarak ilk projenizi oluşturun</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DEPLOYMENTS -->
+  <div id="page-deployments" class="page">
+    <div class="topbar">
+      <span class="topbar-title">Deployments</span>
+      <span class="topbar-sep" id="tb-sep" style="display:none">/</span>
+      <span id="tb-proj" style="display:none;font-size:13px;color:var(--text-2)"></span>
+      <div class="topbar-actions">
+        <button class="btn btn-ghost" id="clear-filter-btn" onclick="clearFilter()" style="display:none;height:28px;font-size:11.5px">✕ Filtreyi kaldır</button>
+        <button class="btn btn-ghost" onclick="loadData()" style="height:28px;font-size:11.5px">
+          <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor"><path d="M13.65 2.35A8 8 0 1 0 15 8h-2a6 6 0 1 1-1.07-3.41L9.5 7H15V1.5l-1.35.85z"/></svg>
+          Yenile
+        </button>
+      </div>
+    </div>
+    <div class="filter-bar">
+      <select class="filter-select" id="proj-filter" onchange="applyFilter()">
+        <option value="">Tüm Projeler</option>
+      </select>
+    </div>
+    <div class="kpi-strip">
+      <div class="kpi-item"><div class="kpi-label">Toplam</div><div class="kpi-value" id="kv-t">—</div></div>
+      <div class="kpi-item"><div class="kpi-label">Çalışıyor</div><div class="kpi-value g" id="kv-r">—</div></div>
+      <div class="kpi-item"><div class="kpi-label">Bekliyor</div><div class="kpi-value a" id="kv-p">—</div></div>
+      <div class="kpi-item"><div class="kpi-label">Başarısız</div><div class="kpi-value r" id="kv-f">—</div></div>
+    </div>
+    <div class="scroll-area">
+      <div class="tbl-wrap">
+        <div class="tbl-hd">
+          <div class="tbl-title">Tüm Deployments <span class="cnt-badge" id="tcnt">0</span></div>
+        </div>
+        <div class="tbl">
+          <div class="tbl-head"><div>#</div><div>Proje</div><div>Repo</div><div>Durum</div><div>Tarih</div><div>Aksiyonlar</div></div>
+          <div id="tbody"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- LOGS -->
+<div id="page-logs" class="page">
+  <div class="topbar">
+    <span class="topbar-title">Logs</span>
+    <div class="topbar-actions">
+      <button class="btn btn-ghost" onclick="loadLogs()" style="height:28px;font-size:11.5px">
+        <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor"><path d="M13.65 2.35A8 8 0 1 0 15 8h-2a6 6 0 1 1-1.07-3.41L9.5 7H15V1.5l-1.35.85z"/></svg>
+        Yenile
+      </button>
+    </div>
+  </div>
+  <div class="logs-toolbar">
+    <select class="filter-select" id="logs-proj-filter" onchange="loadLogs()">
+      <option value="">Proje seçin...</option>
+    </select>
+    <div style="display:flex;gap:6px;margin-left:auto">
+      <button class="btn btn-ghost" id="logs-filter-all" onclick="setLogFilter('all')" style="height:28px;font-size:11px;border:1px solid var(--border-md)">Tümü</button>
+      <button class="btn btn-ghost" id="logs-filter-er" onclick="setLogFilter('er')" style="height:28px;font-size:11px;color:var(--red);border:1px solid rgba(243,18,96,.2)">Hata</button>
+      <button class="btn btn-ghost" id="logs-filter-ok" onclick="setLogFilter('ok')" style="height:28px;font-size:11px;color:var(--green);border:1px solid rgba(0,201,80,.2)">Başarılı</button>
+    </div>
+  </div>
+  <div class="logs-body" id="logs-body">
+    <div class="log-empty">
+      <div style="font-size:24px;margin-bottom:4px">📋</div>
+      <div style="font-size:13px;font-weight:500;color:var(--text-2)">Proje seçin</div>
+      <div style="font-size:11.5px">Yukarıdan bir proje seçerek logları görüntüleyin</div>
+    </div>
+  </div>
+</div>
+
+  <!-- SETTINGS -->
+  <div id="page-settings" class="page" style="align-items:center;justify-content:center">
+    <div class="coming-soon"><div class="coming-soon-ico">⚙️</div><div class="coming-soon-t">Settings</div><div class="coming-soon-s">Yakında eklenecek</div></div>
+  </div>
+
+</main>
+</div>
+
+<!-- DRAWER -->
+<div class="drawer normal" id="drawer">
+  <div class="drawer-hd">
+    <div class="drawer-title"><span style="color:var(--amber)">◉</span><span id="dl-proj">build logs</span><span class="drawer-status" id="dl-status"></span></div>
+    <div class="drawer-hd-right">
+      <button class="drawer-expand" onclick="toggleDrawerSize()" id="expand-btn">⬆</button>
+      <button class="btn btn-ghost" onclick="closeDrawer()" style="height:24px;font-size:11px;padding:0 7px">✕</button>
+    </div>
+  </div>
+  <div class="drawer-body" id="dl-body"></div>
+</div>
+
+<!-- MODAL -->
+<div class="modal-overlay" id="del-modal">
+  <div class="modal">
+    <div class="modal-icon">🗑</div>
+    <div class="modal-title" id="del-modal-title">Deploy'u sil</div>
+    <div class="modal-desc"><strong id="del-proj-name"></strong><span id="del-modal-desc"> silinecek. Bu işlem geri alınamaz.</span></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeDeleteModal()">Vazgeç</button>
+      <button class="btn btn-red btn-lg" id="del-confirm-btn" onclick="confirmDelete()">
+        <span class="spin" id="del-spin" style="border-color:rgba(243,18,96,.2);border-top-color:var(--red)"></span>Sil
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="toasts" id="toasts"></div>
+
+<script>
+let token = localStorage.getItem('paas_token') || null
+let me = localStorage.getItem('paas_email') || null
+let curTab = 'login'
+let rows = []        // deployments
+let projects = []    // projects
+let polling = new Set()
+let pendingDeleteId = null
+let pendingDeleteType = 'deployment' // 'deployment' | 'project'
+let drawerDeployId = null
+let drawerExpanded = false
+let activeFilter = ''
+let _autoRefresh = null
+
+const PAGES = ['home','auth','projects','deployments','logs','settings']
+
+// ── Init ──────────────────────────────────────────────────
+window.onload = async () => {
+  const params = new URLSearchParams(window.location.search)
+  if (params.get('github') === 'connected') {
+    window.history.replaceState({}, '', '/')
+    setTimeout(() => { toast('success', '✓ GitHub hesabınız bağlandı'); checkGithubStatus() }, 400)
+  }
+  if (token) {
+    try {
+      const r = await af('http://localhost:8090/api/me')
+      if (r.ok) {
+        const d = await r.json()
+        setUser(d.email)
+        await loadData()
+        showPage('projects')
+        return
+      }
+    } catch {}
+    clearToken()
+  }
+  showPage('home')
+}
+
+// ── Pages ─────────────────────────────────────────────────
+function showPage(p) {
+  PAGES.forEach(id => {
+    const el = document.getElementById('page-' + id)
+    if (el) el.classList.remove('active')
+  })
+  const el = document.getElementById('page-' + p)
+  if (el) el.classList.add('active')
+  document.querySelectorAll('.sb-nav-item').forEach(el => el.classList.remove('active'))
+  const nav = document.getElementById('nav-' + p)
+  if (nav) nav.classList.add('active')
+
+  // Sidebar'ı sadece giriş yapılmışsa göster
+  const sidebar = document.getElementById('sidebar')
+  if (token && p !== 'home' && p !== 'auth') {
+    sidebar.classList.remove('hidden')
+  } else {
+    sidebar.classList.add('hidden')
+  }
+}
+function navigate(p) {
+  showPage(p)
+  if (p === 'logs') updateLogsFilterSelect()
+}
+function goHome() { token ? showPage('projects') : showPage('home') }
+function showAuth(t) { switchTab(t); showPage('auth') }
+
+// ── Project CRUD ───────────────────────────────────────────
+function npEnter(e) { if (e.key === 'Enter') createProject() }
+
+async function createProject() {
+  const name = document.getElementById('np-name').value.trim()
+  const url  = document.getElementById('np-url').value.trim()
+  if (!name) { shake('np-name'); return }
+  if (!url)  { shake('np-url'); return }
+  const btn = document.getElementById('np-btn'), sp = document.getElementById('np-spin')
+  btn.disabled = true; sp.style.display = 'inline-block'
+  try {
+    const r = await af('http://localhost:8090/api/projects', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({project_name: name, github_url: url})
+    })
+    if (r.status === 401) { logout(); return }
+    const d = await r.json()
+    if (!r.ok) { toast('error', d.detail || 'Proje oluşturulamadı'); return }
+    document.getElementById('np-name').value = ''
+    document.getElementById('np-url').value = ''
+    toast('success', '🚀 "' + name + '" oluşturuldu, deploy başlatıldı')
+    await loadData()
+    // Yeni deploy'u drawer'da göster
+    openDrawer(d.deploy_id, name, 'building')
+    pollDeploy(d.deploy_id)
+    // Deployments sayfasına geç ve filtrele
+    activeFilter = name
+    document.getElementById('proj-filter').value = name
+    applyFilter()
+    navigate('deployments')
+  } catch { toast('error', 'Bağlantı hatası') }
+  finally { btn.disabled = false; sp.style.display = 'none' }
+}
+
+async function redeployProject(projectName) {
+  try {
+    const r = await af(`http://localhost:8090/api/projects/${encodeURIComponent(projectName)}/redeploy`, {method: 'POST'})
+    if (!r.ok) { const d = await r.json(); toast('error', d.detail || 'Redeploy başlatılamadı'); return }
+    const d = await r.json()
+    toast('success', '🔄 "' + projectName + '" redeploy başlatıldı')
+    await loadData()
+    openDrawer(d.deploy_id, projectName, 'building')
+    pollDeploy(d.deploy_id)
+    activeFilter = projectName
+    document.getElementById('proj-filter').value = projectName
+    applyFilter()
+    navigate('deployments')
+  } catch { toast('error', 'Bağlantı hatası') }
+}
+
+// ── Render ─────────────────────────────────────────────────
+function renderProjects() {
+  const grid = document.getElementById('projects-grid')
+  if (!projects.length) {
+    grid.innerHTML = '<div class="empty" style="grid-column:1/-1"><div class="empty-ic">📦</div><div class="empty-t">Henüz proje yok</div><div class="empty-s">Yukarıdaki formu kullanarak ilk projenizi oluşturun</div></div>'
+    return
+  }
+  grid.innerHTML = projects.map(p => {
+    // Bu projenin son deployment durumu
+    const projRows = rows.filter(r => r.project_name.toLowerCase() === p.project_name.toLowerCase())
+    const latest = projRows[0]
+    const st = latest ? latest.status.toLowerCase() : 'stopped'
+    const dotClass = st === 'running' ? 'running' : st === 'failed' ? 'failed' : (st === 'pending' || st === 'building') ? 'pending' : 'stopped'
+    const statusText = st === 'running' ? 'Running' : st === 'failed' ? 'Failed' : (st === 'pending' || st === 'building') ? 'Building' : 'Stopped'
+    const initials = p.project_name.substring(0, 2).toUpperCase()
+    const repo = p.github_url.replace('https://github.com/', '')
+    const dt = p.created_at ? new Date(p.created_at).toLocaleDateString('tr-TR') : '—'
+    return `<div class="proj-card" onclick="openProjectDeployments('${p.project_name}')">
+      <div class="proj-card-top">
+        <div class="proj-card-icon">${initials}</div>
+        <div class="proj-card-status"><div class="proj-card-dot ${dotClass}"></div>${statusText}</div>
+      </div>
+      <div class="proj-card-name">${p.project_name}</div>
+      <div class="proj-card-repo">${repo}</div>
+      <div class="proj-card-footer">
+        <span class="proj-card-meta">${dt} · ${projRows.length} deploy</span>
+        <div class="proj-card-actions" onclick="event.stopPropagation()">
+          <button class="act-btn act-redeploy" onclick="redeployProject('${p.project_name}')" title="Redeploy">↺</button>
+          <button class="act-btn act-del" onclick="openDeleteModal('${p.project_name}','project')" title="Projeyi sil">🗑</button>
+        </div>
+      </div>
+    </div>`
+  }).join('')
+}
+
+function openProjectDeployments(name) {
+  activeFilter = name
+  document.getElementById('proj-filter').value = name
+  applyFilter()
+  navigate('deployments')
+}
+
+function renderTable() {
+  const filtered = activeFilter ? rows.filter(r => r.project_name.toLowerCase() === activeFilter.toLowerCase()) : rows
+  const t = filtered.length
+  const r = filtered.filter(d => d.status === 'Running').length
+  const pend = filtered.filter(d => d.status === 'Pending' || d.status === 'Building').length
+  const f = filtered.filter(d => d.status === 'Failed').length
+  document.getElementById('kv-t').textContent = t
+  document.getElementById('kv-r').textContent = r
+  document.getElementById('kv-p').textContent = pend
+  document.getElementById('kv-f').textContent = f
+  document.getElementById('tcnt').textContent = t
+  const b = document.getElementById('tbody')
+  if (!t) { b.innerHTML = '<div class="empty"><div class="empty-ic">🚀</div><div class="empty-t">Deployment bulunamadı</div><div class="empty-s">Projects sayfasından yeni proje oluşturun</div></div>'; return }
+  b.innerHTML = filtered.map(d => {
+    const st = (d.status || '').toLowerCase()
+    const dt = d.created_at ? new Date(d.created_at).toLocaleString('tr-TR', {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—'
+    const short = (d.github_url || '').replace('https://github.com/', '').substring(0, 28)
+    const openBtn = d.subdomain && st === 'running' ? `<button class="act-btn act-open" onclick="window.open('http://${d.subdomain}:8090','_blank')">↗ Aç</button>` : ''
+    const redeployBtn = `<button class="act-btn act-redeploy" onclick="redeployProject('${d.project_name}')" title="Redeploy">↺ Redeploy</button>`
+    const stopBtn = st === 'running' ? `<button class="act-btn act-stop" onclick="stopDeploy(${d.id})" title="Durdur">⏹</button>` : ''
+    const logBtn = `<button class="act-btn act-log" onclick="openDrawer(${d.id},'${d.project_name}','${st}')">Log</button>`
+    const delBtn = `<button class="act-btn act-del" onclick="openDeleteModal(${d.id},'deployment')" title="Sil">🗑</button>`
+    return `<div class="tbl-row">
+      <div class="tr-id">#${d.id}</div>
+      <div class="tr-name">${d.project_name}</div>
+      <div class="tr-url">${short}</div>
+      <div><span class="chip ${st}"><span class="chip-d"></span>${d.status}</span></div>
+      <div class="tr-time">${dt}</div>
+      <div class="tr-actions">${openBtn}${redeployBtn}${stopBtn}${logBtn}${delBtn}</div>
+    </div>`
+  }).join('')
+}
+
+// ── Filter ─────────────────────────────────────────────────
+function updateFilterSelect() {
+  const select = document.getElementById('proj-filter')
+  select.innerHTML = '<option value="">Tüm Projeler</option>' +
+    projects.map(p => `<option value="${p.project_name}" ${activeFilter === p.project_name ? 'selected' : ''}>${p.project_name}</option>`).join('')
+}
+
+function applyFilter() {
+  activeFilter = document.getElementById('proj-filter').value
+  const sep = document.getElementById('tb-sep')
+  const proj = document.getElementById('tb-proj')
+  const clearBtn = document.getElementById('clear-filter-btn')
+  if (activeFilter) {
+    sep.style.display = 'inline'; proj.style.display = 'inline'
+    proj.textContent = activeFilter; clearBtn.style.display = 'inline-flex'
+  } else {
+    sep.style.display = 'none'; proj.style.display = 'none'; clearBtn.style.display = 'none'
+  }
+  renderTable()
+}
+
+function clearFilter() {
+  activeFilter = ''
+  document.getElementById('proj-filter').value = ''
+  applyFilter()
+}
+
+// ── Auth ───────────────────────────────────────────────────
+function switchTab(t) {
+  curTab = t
+  document.getElementById('tl').classList.toggle('active', t==='login')
+  document.getElementById('tr').classList.toggle('active', t==='register')
+  document.getElementById('at').textContent = t==='login' ? 'Giriş Yap' : 'Yeni Hesap Oluştur'
+  document.getElementById('as').textContent = t==='login' ? 'Hesabına erişmek için bilgilerini gir' : 'Saniyeler içinde deploy etmeye başla'
+  document.getElementById('asubt').textContent = t==='login' ? 'Giriş Yap' : 'Kayıt Ol'
+  document.getElementById('aft').textContent = t==='login' ? "Hesabın yok mu?" : "Zaten hesabın var mı?"
+  document.getElementById('afl').textContent = t==='login' ? ' Kayıt ol' : ' Giriş yap'
+  document.getElementById('strwrap').style.display = t==='register' ? 'block' : 'none'
+  clearAErr()
+  document.getElementById('au').value = ''
+  document.getElementById('ap').value = ''
+}
+function clearAErr() { document.getElementById('aerr').classList.remove('on'); document.getElementById('au').classList.remove('err'); document.getElementById('ap').classList.remove('err') }
+function showErr(m) { const e = document.getElementById('aerr'); e.textContent = m; e.classList.add('on') }
+function pwInput() {
+  if (curTab !== 'register') return
+  const pw = document.getElementById('ap').value, fill = document.getElementById('sf'), hint = document.getElementById('str-hint')
+  let s = 0
+  if (pw.length>=8) s++; if (/[A-Z]/.test(pw)) s++; if (/[a-z]/.test(pw)) s++; if (/[0-9]/.test(pw)) s++; if (/[^A-Za-z0-9]/.test(pw)) s++
+  const c=['transparent','#f31260','#f5a524','#f5a524','#00c950','#00c950'], w=['0%','20%','45%','65%','85%','100%']
+  fill.style.width=w[s]; fill.style.background=c[s]
+  const msgs=['','⚠ Çok zayıf','⚠ Zayıf','○ Orta','● Güçlü','✓ Çok güçlü']
+  hint.textContent=pw?msgs[s]:''; hint.style.color=c[s]
+}
+function togglePw() { const i=document.getElementById('ap'); i.type=i.type==='password'?'text':'password' }
+function aEnter(e) { if (e.key==='Enter') doAuth() }
+
+async function doAuth() {
+  const email=document.getElementById('au').value.trim(), pass=document.getElementById('ap').value
+  clearAErr()
+  if (!email) { showErr('E-posta adresi gerekli'); document.getElementById('au').classList.add('err'); return }
+  if (!pass) { showErr('Şifre gerekli'); document.getElementById('ap').classList.add('err'); return }
+  const btn=document.getElementById('asub'), sp=document.getElementById('asp')
+  btn.disabled=true; sp.style.display='inline-block'
+  try {
+    const url = curTab==='login' ? 'http://localhost:8090/api/login' : 'http://localhost:8090/api/register'
+    const r = await fetch(url, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password:pass})})
+    const d = await r.json()
+    if (!r.ok) { showErr(d.detail||'Hata'); return }
+    token=d.token; me=email
+    localStorage.setItem('paas_token',token); localStorage.setItem('paas_email',me)
+    setUser(me); toast('success', curTab==='login' ? '👋 Hoş geldin!' : '🎉 Kayıt başarılı!')
+    await loadData(); showPage('projects')
+  } catch { showErr('Sunucuya bağlanılamadı') }
+  finally { btn.disabled=false; sp.style.display='none' }
+}
+
+// ── User ───────────────────────────────────────────────────
+function setUser(u) {
+  me=u
+  document.getElementById('sb-user').style.display='flex'
+  document.getElementById('sb-user-email').textContent=u.includes('@')?u.split('@')[0]:u
+  document.getElementById('sb-nav').style.display='block'
+  document.getElementById('sb-logout').style.display='flex'
+  document.getElementById('sb-login').style.display='none'
+  document.querySelector('.sidebar').classList.remove('hidden')
+  checkGithubStatus(); startAutoRefresh()
+}
+function logout() {
+  stopAutoRefresh(); clearToken(); rows=[]; projects=[]
+  document.getElementById('sb-user').style.display='none'
+  document.getElementById('sb-nav').style.display='none'
+  document.getElementById('sb-logout').style.display='none'
+  document.getElementById('sb-login').style.display='flex'
+  document.getElementById('sb-gh-connect').style.display='none'
+  document.getElementById('sb-gh-connected').style.display='none'
+  document.querySelector('.sidebar').classList.add('hidden')
+  closeDrawer(); showPage('home'); toast('success','Çıkış yapıldı')
+}
+function clearToken() { token=null; me=null; localStorage.removeItem('paas_token'); localStorage.removeItem('paas_email') }
+
+// ── Data ───────────────────────────────────────────────────
+async function loadData() {
+  try {
+    const [rp, rd] = await Promise.all([
+      af('http://localhost:8090/api/projects'),
+      af('http://localhost:8090/api/deployments')
+    ])
+    if (rp.ok) projects = await rp.json()
+    if (rd.ok) rows = await rd.json()
+    updateFilterSelect(); renderProjects(); renderTable(); updateLogsFilterSelect()
+    rows.filter(d=>d.status==='Pending'||d.status==='Building').forEach(d=>{if(!polling.has(d.id))pollDeploy(d.id)})
+  } catch {}
+}
+
+async function pollDeploy(id) {
+  if (polling.has(id)) return; polling.add(id)
+  const tick = async () => {
+    try {
+      const r=await af('http://localhost:8090/api/status/'+id); if (!r.ok) { polling.delete(id); return }
+      const d=await r.json()
+      const i=rows.findIndex(x=>x.id===id); if (i!==-1) rows[i]=d
+      renderTable(); renderProjects(); updateLogsFilterSelect()
+      if (drawerDeployId===id) updateDrawer(d)
+      if (d.status==='Pending'||d.status==='Building') setTimeout(tick,2000)
+      else {
+        polling.delete(id)
+        if (d.status==='Running') toast('success','✅ "'+d.project_name+'" yayında!')
+        else if (d.status==='Failed') { toast('error','❌ "'+d.project_name+'" başarısız'); if (drawerDeployId===id) updateDrawer(d) }
+      }
+    } catch { polling.delete(id) }
+  }; tick()
+}
+
+function startAutoRefresh() { if (_autoRefresh) return; _autoRefresh=setInterval(()=>{if(token)loadData()},5000) }
+function stopAutoRefresh() { clearInterval(_autoRefresh); _autoRefresh=null }
+
+// ── Stop ───────────────────────────────────────────────────
+async function stopDeploy(id) {
+  try {
+    const r=await af(`http://localhost:8090/api/deployments/${id}/stop`,{method:'POST'})
+    if (!r.ok) { const d=await r.json(); toast('error',d.detail||'Durdurulamadı'); return }
+    const i=rows.findIndex(x=>x.id===id); if (i!==-1) rows[i].status='Stopped'
+    renderTable(); renderProjects(); updateLogsFilterSelect(); toast('success','⏹ Deployment durduruldu')
+  } catch { toast('error','Bağlantı hatası') }
+}
+
+// ── Delete ─────────────────────────────────────────────────
+function openDeleteModal(id, type) {
+  pendingDeleteId = id
+  pendingDeleteType = type
+  if (type === 'project') {
+    document.getElementById('del-modal-title').textContent = 'Projeyi sil'
+    document.getElementById('del-proj-name').textContent = '"' + id + '"'
+    document.getElementById('del-modal-desc').textContent = ' ve tüm deployment\'ları silinecek. Bu işlem geri alınamaz.'
+  } else {
+    document.getElementById('del-modal-title').textContent = 'Deploy\'u sil'
+    document.getElementById('del-proj-name').textContent = '#' + id
+    document.getElementById('del-modal-desc').textContent = ' silinecek. Bu işlem geri alınamaz.'
+  }
+  document.getElementById('del-modal').classList.add('open')
+}
+function closeDeleteModal() { document.getElementById('del-modal').classList.remove('open'); pendingDeleteId=null }
+document.getElementById('del-modal').addEventListener('click',function(e){if(e.target===this)closeDeleteModal()})
+
+async function confirmDelete() {
+  if (!pendingDeleteId) return
+  const btn=document.getElementById('del-confirm-btn'), sp=document.getElementById('del-spin')
+  btn.disabled=true; sp.style.display='inline-block'
+  try {
+    let url, method = 'DELETE'
+    if (pendingDeleteType === 'project') {
+      url = `http://localhost:8090/api/projects/${encodeURIComponent(pendingDeleteId)}`
+    } else {
+      url = `http://localhost:8090/api/deployments/${pendingDeleteId}`
+    }
+    const r = await af(url, {method})
+    if (!r.ok) { const d=await r.json(); toast('error',d.detail||'Silinemedi'); return }
+    if (pendingDeleteType === 'project') {
+      projects = projects.filter(p => p.project_name !== pendingDeleteId)
+      rows = rows.filter(r => r.project_name.toLowerCase() !== pendingDeleteId.toLowerCase())
+      toast('success','🗑 Proje silindi')
+    } else {
+      rows = rows.filter(x=>x.id!==pendingDeleteId)
+      if (drawerDeployId===pendingDeleteId) closeDrawer()
+      toast('success','🗑 Deploy silindi')
+    }
+    renderTable(); renderProjects(); updateLogsFilterSelect(); updateFilterSelect()
+    closeDeleteModal()
+  } catch { toast('error','Bağlantı hatası') }
+  finally { btn.disabled=false; sp.style.display='none' }
+}
+
+// ── Drawer ─────────────────────────────────────────────────
+function ts() { return `<span class="ll ts">[${new Date().toLocaleTimeString('tr-TR')}]</span> ` }
+
+async function openDrawer(deployId, projName, status) {
+  drawerDeployId=deployId
+  document.getElementById('dl-proj').textContent=projName+' / build logs'
+  setDrawerStatus(status)
+  const b=document.getElementById('dl-body')
+  b.innerHTML=''
+  document.getElementById('drawer').classList.add('open','normal')
+  if (status==='building'||status==='pending') {
+    b.innerHTML=`<span class="ll inf">${ts()}WebSocket bağlanıyor...</span>`
+    const ws=new WebSocket(`ws://localhost:5000/ws/${projName.toLowerCase()}`)
+    ws.onopen=()=>{b.innerHTML=`<span class="ll inf">${ts()}Pipeline başlatıldı, loglar geliyor...</span>`}
+    ws.onmessage=(e)=>{
+      const line=e.data; let cls='inf'
+      if(line.startsWith('[+]')||line.includes('SUCCESS'))cls='ok'
+      else if(line.startsWith('[-]')||line.toLowerCase().includes('error'))cls='er'
+      else if(line.startsWith('[!]'))cls='warn'
+      b.innerHTML+=`<span class="ll ${cls}">${ts()}${line}</span>`; b.scrollTop=b.scrollHeight
+    }
+    ws.onerror=()=>{b.innerHTML+=`<span class="ll warn">${ts()}WebSocket bağlantısı kurulamadı.</span>`}
+    ws.onclose=()=>{b.innerHTML+=`<span class="ll ts">${ts()}--- log stream sona erdi ---</span>`; b.scrollTop=b.scrollHeight}
+  } else {
+    b.innerHTML=`<span class="ll ts">${ts()}Loglar yükleniyor...</span>`
+    try {
+      const r=await fetch(`http://localhost:5000/logs/${projName.toLowerCase()}`)
+      if (r.ok) {
+        const data=await r.json(); b.innerHTML=''
+        data.lines.forEach(line=>{
+          let cls='inf'
+          if(line.startsWith('[+]')||line.includes('SUCCESS'))cls='ok'
+          else if(line.startsWith('[-]')||line.toLowerCase().includes('error'))cls='er'
+          else if(line.startsWith('[!]'))cls='warn'
+          b.innerHTML+=`<span class="ll ${cls}">${line}</span>`
+        })
+      } else { b.innerHTML=`<span class="ll warn">${ts()}Log dosyası mevcut değil.</span>` }
+    } catch { b.innerHTML=`<span class="ll warn">${ts()}Loglara ulaşılamadı.</span>` }
+    b.scrollTop=b.scrollHeight
+  }
+}
+function updateDrawer(d) {
+  if (drawerDeployId!==d.id) return
+  const b=document.getElementById('dl-body'), st=(d.status||'').toLowerCase()
+  setDrawerStatus(st)
+  if (st==='running') {
+    b.innerHTML+=`<span class="ll ok">${ts()}✓ Build tamamlandı</span>`
+    b.innerHTML+=`<span class="ll ok">${ts()}✓ Uygulama yayında: http://${d.subdomain}:8090</span>`
+  } else if (st==='failed') {
+    if (!document.querySelector('.ll.er')) b.innerHTML+=`<span class="ll er">${ts()}✗ Build başarısız oldu</span>`
+  }
+  b.scrollTop=b.scrollHeight
+}
+function setDrawerStatus(st) {
+  const el=document.getElementById('dl-status')
+  el.className='drawer-status '+st
+  el.textContent={running:'Running',building:'Building',pending:'Pending',failed:'Failed',stopped:'Stopped'}[st]||st
+}
+function closeDrawer() { document.getElementById('drawer').classList.remove('open'); drawerDeployId=null }
+function toggleDrawerSize() {
+  const d=document.getElementById('drawer'), btn=document.getElementById('expand-btn')
+  drawerExpanded=!drawerExpanded; d.classList.toggle('expanded',drawerExpanded); d.classList.toggle('normal',!drawerExpanded)
+  btn.textContent=drawerExpanded?'⬇':'⬆'
+}
+
+// ── Logs ───────────────────────────────────────────────────
+let activeLogFilter = 'all'
+let allLogLines = []
+
+function updateLogsFilterSelect() {
+  const select = document.getElementById('logs-proj-filter')
+  if (!select) return
+  const current = select.value
+  select.innerHTML = '<option value="">Proje seçin...</option>' +
+    projects.map(p => `<option value="${p.project_name}" ${current === p.project_name ? 'selected' : ''}>${p.project_name}</option>`).join('')
+}
+
+function setLogFilter(f) {
+  activeLogFilter = f
+  document.getElementById('logs-filter-all').style.fontWeight = f === 'all' ? '600' : '400'
+  document.getElementById('logs-filter-er').style.fontWeight = f === 'er' ? '600' : '400'
+  document.getElementById('logs-filter-ok').style.fontWeight = f === 'ok' ? '600' : '400'
+  renderLogs()
+}
+
+function renderLogs() {
+  const b = document.getElementById('logs-body')
+  let lines = allLogLines
+  if (activeLogFilter !== 'all') {
+    lines = lines.filter(l => l.cls === activeLogFilter)
+  }
+  if (!lines.length) {
+    b.innerHTML = `<div class="log-empty"><div style="font-size:24px;margin-bottom:4px">🔍</div><div style="font-size:13px;font-weight:500;color:var(--text-2)">Log bulunamadı</div></div>`
+    return
+  }
+  b.innerHTML = lines.map(l => `
+    <div class="log-line">
+      <span class="log-level ${l.cls}">${l.cls === 'ok' ? 'INFO' : l.cls === 'er' ? 'ERROR' : l.cls === 'warn' ? 'WARN' : 'INFO'}</span>
+      <span class="log-msg ${l.cls}">${l.text}</span>
+    </div>
+  `).join('')
+  b.scrollTop = b.scrollHeight
+}
+
+async function loadLogs() {
+  const projName = document.getElementById('logs-proj-filter').value
+  const b = document.getElementById('logs-body')
+  if (!projName) {
+    b.innerHTML = `<div class="log-empty"><div style="font-size:24px;margin-bottom:4px">📋</div><div style="font-size:13px;font-weight:500;color:var(--text-2)">Proje seçin</div><div style="font-size:11.5px">Yukarıdan bir proje seçerek logları görüntüleyin</div></div>`
+    return
+  }
+  b.innerHTML = `<div class="log-empty"><div style="font-size:20px;margin-bottom:4px">⏳</div><div style="font-size:13px;color:var(--text-2)">Loglar yükleniyor...</div></div>`
+  try {
+    const r = await fetch(`http://localhost:5000/logs/${projName.toLowerCase()}`)
+    if (!r.ok) {
+      b.innerHTML = `<div class="log-empty"><div style="font-size:24px;margin-bottom:4px">📭</div><div style="font-size:13px;font-weight:500;color:var(--text-2)">Log bulunamadı</div><div style="font-size:11.5px">Bu proje için henüz log yok</div></div>`
+      return
+    }
+    const data = await r.json()
+    allLogLines = data.lines.map(line => {
+      let cls = 'inf'
+      if (line.startsWith('[+]') || line.includes('SUCCESS')) cls = 'ok'
+      else if (line.startsWith('[-]') || line.toLowerCase().includes('error')) cls = 'er'
+      else if (line.startsWith('[!]')) cls = 'warn'
+      return { cls, text: line }
+    })
+    renderLogs()
+  } catch {
+    b.innerHTML = `<div class="log-empty"><div style="font-size:24px;margin-bottom:4px">⚠️</div><div style="font-size:13px;color:var(--red)">Loglara ulaşılamadı</div></div>`
+  }
+}
+
+// ── GitHub ─────────────────────────────────────────────────
+async function checkGithubStatus() {
+  if (!localStorage.getItem('paas_token')) return
+  try {
+    const r=await af('http://localhost:8090/api/github/status'); if (!r.ok) return
+    const data=await r.json(), connected=data&&data.connected
+    document.getElementById('sb-gh-connect').style.display=connected?'none':'flex'
+    document.getElementById('sb-gh-connected').style.display=connected?'flex':'none'
+  } catch {}
+}
+async function connectGitHub() {
+  try {
+    const r=await af('http://localhost:8090/api/github/login'); if (!r.ok) { toast('error','GitHub bağlantısı başlatılamadı'); return }
+    const data=await r.json(); if (data&&data.redirect_url) window.location.href=data.redirect_url
+  } catch { toast('error','Bağlantı hatası') }
+}
+async function disconnectGitHub() {
+  try {
+    const r=await af('http://localhost:8090/api/github/disconnect',{method:'DELETE'})
+    if (r.ok) { toast('success','GitHub bağlantısı kesildi'); checkGithubStatus() }
+  } catch {}
+}
+
+// ── Helpers ────────────────────────────────────────────────
+function shake(id) { const el=document.getElementById(id); el.classList.add('err'); setTimeout(()=>el.classList.remove('err'),1000) }
+function af(url,o={}) { o.headers=o.headers||{}; if(token)o.headers['Authorization']='Bearer '+token; return fetch(url,o) }
+function toast(type,msg) {
+  const c=document.getElementById('toasts'), el=document.createElement('div')
+  el.className='toast '+type
+  el.innerHTML=`<span>${type==='success'?'✓':'✕'}</span><span>${msg}</span>`
+  c.appendChild(el)
+  setTimeout(()=>{el.style.animation='sOut .18s ease forwards';setTimeout(()=>el.remove(),180)},3400)
+}
+</script>
+</body>
+</html>
+</file>
+
+<file path="deploy-service/database.py">
+import sqlite3
+import os
+
+DB_PATH = "data/deploy.db"
+
+def init_db():
+    os.makedirs("data", exist_ok=True)
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+
+    # Projeler tablosu — her proje bir kez oluşturulur
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS projects (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_email   TEXT NOT NULL,
+            project_name TEXT NOT NULL,
+            github_url   TEXT NOT NULL,
+            created_at   TEXT NOT NULL,
+            UNIQUE(user_email, project_name)
+        )
+    """)
+
+    # Deployment'lar tablosu — her deploy için bir kayıt
+    # FAZ 4 A.2: container_name kolonu eklendi (kullanıcı-proje bazlı benzersiz ad)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS deployments (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_email     TEXT NOT NULL DEFAULT '',
+            project_name   TEXT NOT NULL,
+            github_url     TEXT NOT NULL,
+            status         TEXT NOT NULL,
+            port           INTEGER,
+            subdomain      TEXT,
+            container_name TEXT,
+            created_at     TEXT NOT NULL
+        )
+    """)
+
+    conn.commit()
+
+    # ── Mevcut veritabanı migration (tek seferlik, güvenli) ──────────────────
+    # Eski deploy.db dosyaları container_name kolonuna sahip olmayabilir.
+    # ALTER TABLE IF NOT EXISTS kolonu SQLite'ta desteklenmediği için
+    # PRAGMA table_info ile kontrol edip ekliyoruz.
+    _migrate(conn)
+
+    conn.close()
+
+
+def _migrate(conn):
+    """
+    Mevcut veritabanına eksik kolonları ekler.
+    Kolon zaten varsa hiçbir şey yapmaz (idempotent).
+    """
+    c = conn.cursor()
+
+    # deployments tablosundaki mevcut kolonları öğren
+    c.execute("PRAGMA table_info(deployments)")
+    existing_cols = {row[1] for row in c.fetchall()}
+
+    if "container_name" not in existing_cols:
+        c.execute("ALTER TABLE deployments ADD COLUMN container_name TEXT")
+        print("[DB migration] deployments.container_name kolonu eklendi")
+
+    conn.commit()
+
+
+def get_connection():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+# ── FAZ 4 A.1: upsert_project ────────────────────────────────────────────────
+def upsert_project(conn, user_email: str, project_name: str, github_url: str,
+                   container_name: str = "") -> int:
+    """
+    Push-to-deploy akışında projects tablosuna kayıt oluşturur ya da günceller.
+
+    • Proje yoksa → INSERT (push ile ilk kez görülen proje)
+    • Proje varsa → github_url güncelle (repo değişmiş olabilir)
+
+    Bu fix sayesinde push-to-deploy ile gelen deploy'lar Projects
+    sayfasında görünür hale gelir.
+
+    Dönüş: projects satırının id değeri
+    """
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "SELECT id FROM projects WHERE user_email=? AND LOWER(project_name)=LOWER(?)",
+        (user_email, project_name)
+    )
+    row = cursor.fetchone()
+
+    if row is None:
+        cursor.execute(
+            """
+            INSERT INTO projects (user_email, project_name, github_url, created_at)
+            VALUES (?, ?, ?, datetime('now'))
+            """,
+            (user_email, project_name, github_url)
+        )
+        conn.commit()
+        project_id = cursor.lastrowid
+        print(f"[DB] Proje upsert → INSERT: {user_email}/{project_name}")
+    else:
+        project_id = row[0]
+        cursor.execute(
+            """
+            UPDATE projects
+            SET github_url = ?
+            WHERE id = ?
+            """,
+            (github_url, project_id)
+        )
+        conn.commit()
+        print(f"[DB] Proje upsert → UPDATE: {user_email}/{project_name}")
+
+    return project_id
+</file>
+
+<file path="deploy-service/requirements.txt">
+fastapi
+uvicorn
+requests
+python-jose[cryptography]
+httpx
+redis==5.0.8
+python-json-logger==2.0.7
+</file>
+
+<file path="github-service/requirements.txt">
+fastapi
+uvicorn
+httpx
+python-jose[cryptography]
+requests
+redis==5.0.8
+python-json-logger==2.0.7
+</file>
+
+<file path="prometheus.yml">
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+
+  # Traefik — HTTP request sayıları, latency, router metrikleri
+  - job_name: 'traefik'
+    static_configs:
+      - targets: ['traefik_proxy:8080']
+    metrics_path: /metrics
+
+  # API Gateway — canlılık kontrolü
+  - job_name: 'api-gateway'
+    static_configs:
+      - targets: ['paas_api:8000']
+    metrics_path: /health
+
+  # Builder Service — build pipeline sağlığı
+  - job_name: 'builder-service'
+    static_configs:
+      - targets: ['paas_builder:5000']
+    metrics_path: /health
+
+  # Prometheus kendini izliyor
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+</file>
+
+<file path="builder-service/Dockerfile">
+FROM python:3.10-slim
+
+RUN apt-get update && \
+    apt-get install -y git docker.io curl && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+    CMD curl -f http://localhost:5000/health || exit 1
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "5000"]
+</file>
+
+<file path="builder-service/requirements.txt">
+fastapi==0.104.1
+uvicorn==0.24.0
+pydantic==2.5.2
+requests==2.31.0
+websockets==12.0
+pyyaml==6.0.1
+python-json-logger==2.0.7
+</file>
+
+<file path="deploy-service/main.py">
+from fastapi import FastAPI, BackgroundTasks, HTTPException, Depends, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from pydantic import BaseModel
+from datetime import datetime
+from jose import JWTError, jwt          # FAZ 4 A.3 — local doğrulama
+import requests as http_requests
+import httpx, re, os
+from secrets_helper import get_secret   # FAZ 4 A.3
+
+from database import init_db, get_connection, upsert_project  # FAZ 4 A.1
+
+AUTH_SERVICE_URL    = os.getenv("AUTH_SERVICE_URL",    "http://auth-service:8001")
+BUILDER_SERVICE_URL = os.getenv("BUILDER_SERVICE_URL", "http://builder-service:5000")
+GITHUB_SERVICE_URL  = os.getenv("GITHUB_SERVICE_URL",  "http://github-service:8002")
+
+# ── FAZ 4 A.3: Auth Service'e bağımlılığı kopar ──────────────────────────────
+# deploy-service artık JWT'yi kendi doğrular.
+# Auth Service sadece token üretir; bu servis artık /api/auth/verify çağırmaz.
+SECRET_KEY = get_secret("jwt_secret", "JWT_SECRET")
+ALGORITHM  = "HS256"
+
+bearer = HTTPBearer()
+app = FastAPI(title="Deploy Service")
+
+os.makedirs("data", exist_ok=True)
+init_db()
+
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+# ─── Models ───────────────────────────────────────────────────
+class ProjectRequest(BaseModel):
+    project_name: str
+    github_url:   str
+
+class WebhookRequest(BaseModel):
+    deploy_id: int
+    status:    str
+    port:      int
+    subdomain: str = ""
+
+# ─── FAZ 4 A.3: Local JWT doğrulama ──────────────────────────────────────────
+# Auth Service down olsa bile tüm API endpoint'leri çalışmaya devam eder.
+# circuit_breaker.py'ye olan bağımlılık kaldırıldı.
+async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(bearer)) -> str:
+    try:
+        payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
+        email: str = payload.get("sub")
+        if not email:
+            raise HTTPException(status_code=401, detail="Geçersiz token")
+        return email
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Token geçersiz veya süresi dolmuş")
+
+# ─── FAZ 4 A.2: Container adı üretici ───────────────────────────────────────
+def compute_container_name(user_email: str, project_name: str) -> str:
+    """
+    Kullanıcı bazlı benzersiz container adı üretir.
+
+    Örnekler:
+        omertank36@gmail.com + testapp   → omertank36_testapp
+        ali.veli@company.com + api       → ali_veli_api
+
+    Böylece farklı kullanıcılar aynı proje adını kullanabilir,
+    container çakışması olmaz.
+    """
+    email_prefix = user_email.split("@")[0].lower().replace(".", "_")
+    # Docker isimlendirme kuralı: [a-zA-Z0-9][a-zA-Z0-9_.-]
+    email_prefix = re.sub(r"[^a-z0-9_]", "_", email_prefix)
+    clean_project = re.sub(r"[^a-z0-9-]", "-", project_name.lower().strip()).strip("-")
+    clean_project = re.sub(r"-+", "-", clean_project)
+    return f"{email_prefix}_{clean_project}"
+
+def compute_subdomain(user_email: str, project_name: str) -> str:
+    """
+    Traefik subdomain adı üretir.
+
+    Örnekler:
+        omertank36@gmail.com + testapp  → omertank36-testapp
+    """
+    email_prefix = user_email.split("@")[0].lower().replace(".", "-")
+    email_prefix = re.sub(r"[^a-z0-9-]", "-", email_prefix).strip("-")
+    clean_project = re.sub(r"[^a-z0-9-]", "-", project_name.lower().strip()).strip("-")
+    clean_project = re.sub(r"-+", "-", clean_project)
+    return f"{email_prefix}-{clean_project}"
+
+# ─── GitHub token al ──────────────────────────────────────────
+async def get_github_token(email: str) -> str:
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{GITHUB_SERVICE_URL}/api/github/token",
+                params={"email": email},
+                timeout=5
+            )
+            if r.status_code == 200:
+                return r.json().get("token", "")
+    except Exception:
+        pass
+    return ""
+
+# ─── Builder tetikle ──────────────────────────────────────────
+# FAZ 4 A.2: container_name parametresi eklendi
+def trigger_builder(deploy_id: int, github_url: str, project_name: str,
+                    github_token: str = "", container_name: str = "", subdomain: str = ""):
+    try:
+        r = http_requests.post(
+            f"{BUILDER_SERVICE_URL}/deploy",
+            json={
+                "deploy_id":      deploy_id,
+                "repo_url":       github_url,
+                "project_name":   project_name,
+                "github_token":   github_token,
+                "container_name": container_name,   # FAZ 4 A.2
+                "subdomain":      subdomain,        # FAZ 4 A.2
+            },
+            timeout=10
+        )
+        print(f"[Deploy Service] Builder: {r.status_code}")
+    except Exception as e:
+        print(f"[Deploy Service] Builder ulaşılamadı: {e}")
+        conn = get_connection()
+        conn.execute("UPDATE deployments SET status='Failed' WHERE id=?", (deploy_id,))
+        conn.commit()
+        conn.close()
+
+# ─── Yeni deployment başlat ───────────────────────────────────
+# FAZ 4 A.2: container_name parametresi eklendi, veritabanına yazılıyor
+def start_deployment(conn, email: str, project_name: str, github_url: str,
+                     container_name: str = "") -> int:
+    conn.execute(
+        """
+        UPDATE deployments SET status='Stopped'
+        WHERE user_email=? AND LOWER(project_name)=LOWER(?)
+          AND status IN ('Running','Pending','Building')
+        """,
+        (email, project_name)
+    )
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        INSERT INTO deployments
+            (user_email, project_name, github_url, status, container_name, created_at)
+        VALUES (?,?,?,?,?,?)
+        """,
+        (email, project_name, github_url, "Pending", container_name,
+         datetime.utcnow().isoformat())
+    )
+    deploy_id = cursor.lastrowid
+    conn.commit()
+    return deploy_id
+
+# ─── Project endpoints ────────────────────────────────────────
+@app.post("/api/projects")
+async def create_project(req: ProjectRequest, bg: BackgroundTasks,
+                         email: str = Depends(verify_token)):
+    """Yeni proje oluştur ve ilk deploy'u başlat."""
+    conn = get_connection()
+    existing = conn.execute(
+        "SELECT id FROM projects WHERE user_email=? AND LOWER(project_name)=LOWER(?)",
+        (email, req.project_name)
+    ).fetchone()
+    if existing:
+        conn.close()
+        raise HTTPException(status_code=409, detail="Bu proje adı zaten kullanılıyor")
+
+    conn.execute(
+        "INSERT INTO projects (user_email, project_name, github_url, created_at) VALUES (?,?,?,?)",
+        (email, req.project_name, req.github_url, datetime.utcnow().isoformat())
+    )
+
+    # FAZ 4 A.2: kullanıcı-proje bazlı container adı
+    container_name = compute_container_name(email, req.project_name)
+    subdomain      = compute_subdomain(email, req.project_name)
+
+    deploy_id = start_deployment(conn, email, req.project_name, req.github_url, container_name)
+    conn.close()
+
+    github_token = await get_github_token(email)
+    bg.add_task(trigger_builder, deploy_id, req.github_url, req.project_name,
+                github_token, container_name, subdomain)
+    return {"deploy_id": deploy_id, "message": "Proje oluşturuldu, deployment başlatıldı"}
+
+@app.get("/api/projects")
+async def list_projects(email: str = Depends(verify_token)):
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT * FROM projects WHERE user_email=? ORDER BY id DESC", (email,)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+@app.post("/api/projects/{project_name}/redeploy")
+async def redeploy(project_name: str, bg: BackgroundTasks,
+                   email: str = Depends(verify_token)):
+    """Mevcut projeyi yeniden deploy et."""
+    conn = get_connection()
+    proj = conn.execute(
+        "SELECT * FROM projects WHERE user_email=? AND LOWER(project_name)=LOWER(?)",
+        (email, project_name)
+    ).fetchone()
+    if not proj:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Proje bulunamadı")
+
+    # FAZ 4 A.2: container adını yeniden hesapla (tutarlılık için)
+    container_name = compute_container_name(email, proj["project_name"])
+    subdomain      = compute_subdomain(email, proj["project_name"])
+
+    deploy_id = start_deployment(conn, email, proj["project_name"], proj["github_url"],
+                                 container_name)
+    conn.close()
+
+    github_token = await get_github_token(email)
+    bg.add_task(trigger_builder, deploy_id, proj["github_url"], proj["project_name"],
+                github_token, container_name, subdomain)
+    return {"deploy_id": deploy_id, "message": "Redeploy başlatıldı"}
+
+@app.delete("/api/projects/{project_name}")
+async def delete_project(project_name: str, email: str = Depends(verify_token)):
+    """Projeyi ve tüm deployment'larını sil."""
+    conn = get_connection()
+    proj = conn.execute(
+        "SELECT * FROM projects WHERE user_email=? AND LOWER(project_name)=LOWER(?)",
+        (email, project_name)
+    ).fetchone()
+    if not proj:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Proje bulunamadı")
+
+    # FAZ 4 A.2: container adını veritabanından al, yoksa hesapla
+    running = conn.execute(
+        """
+        SELECT container_name FROM deployments
+        WHERE user_email=? AND LOWER(project_name)=LOWER(?) AND status='Running'
+        ORDER BY id DESC LIMIT 1
+        """,
+        (email, project_name)
+    ).fetchone()
+
+    container_name = (running["container_name"] if running and running["container_name"]
+                      else compute_container_name(email, project_name))
+    image_name     = f"{re.sub(r'[^a-z0-9-]', '-', project_name.lower().strip()).strip('-')}-img"
+
+    conn.execute(
+        "DELETE FROM deployments WHERE user_email=? AND LOWER(project_name)=LOWER(?)",
+        (email, project_name)
+    )
+    conn.execute(
+        "DELETE FROM projects WHERE user_email=? AND LOWER(project_name)=LOWER(?)",
+        (email, project_name)
+    )
+    conn.commit()
+    conn.close()
+
+    try:
+        http_requests.post(
+            f"{BUILDER_SERVICE_URL}/cleanup",
+            json={"container_name": container_name, "image_name": image_name},
+            timeout=10
+        )
+    except Exception as e:
+        print(f"[Deploy Service] Cleanup hatası: {e}")
+
+    return {"message": "Proje silindi"}
+
+# ─── Deployment endpoints ─────────────────────────────────────
+@app.post("/api/webhook")
+async def webhook(req: WebhookRequest):
+    conn = get_connection()
+    conn.execute(
+        "UPDATE deployments SET status=?, port=?, subdomain=? WHERE id=?",
+        (req.status, req.port, req.subdomain, req.deploy_id)
+    )
+    conn.commit()
+    conn.close()
+    print(f"[Deploy Service] Deploy #{req.deploy_id} → {req.status}")
+    return {"message": "Güncellendi"}
+
+@app.get("/api/status/{deploy_id}")
+async def status(deploy_id: int, email: str = Depends(verify_token)):
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT * FROM deployments WHERE id=? AND user_email=?", (deploy_id, email)
+    ).fetchone()
+    conn.close()
+    if not row:
+        raise HTTPException(status_code=404, detail="Bulunamadı")
+    return dict(row)
+
+@app.get("/api/deployments")
+async def list_deployments(email: str = Depends(verify_token)):
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT * FROM deployments WHERE user_email=? ORDER BY id DESC", (email,)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+@app.delete("/api/deployments/{deploy_id}")
+async def delete_deployment(deploy_id: int, email: str = Depends(verify_token)):
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT * FROM deployments WHERE id=? AND user_email=?", (deploy_id, email)
+    ).fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Bulunamadı")
+
+    # FAZ 4 A.2: veritabanındaki container_name'i kullan
+    container_name = (row["container_name"] if row["container_name"]
+                      else compute_container_name(email, row["project_name"]))
+    image_name     = f"{re.sub(r'[^a-z0-9-]', '-', row['project_name'].lower().strip()).strip('-')}-img"
+
+    other = conn.execute(
+        """
+        SELECT id FROM deployments
+        WHERE user_email=? AND project_name=? AND id!=? AND status='Running'
+        """,
+        (email, row["project_name"], deploy_id)
+    ).fetchone()
+
+    conn.execute("DELETE FROM deployments WHERE id=?", (deploy_id,))
+    conn.commit()
+    conn.close()
+
+    if not other:
+        try:
+            http_requests.post(
+                f"{BUILDER_SERVICE_URL}/cleanup",
+                json={"container_name": container_name, "image_name": image_name},
+                timeout=10
+            )
+        except Exception as e:
+            print(f"[Deploy Service] Cleanup hatası: {e}")
+
+    return {"message": "Silindi"}
+
+@app.post("/api/deployments/{deploy_id}/stop")
+async def stop_deployment(deploy_id: int, email: str = Depends(verify_token)):
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT * FROM deployments WHERE id=? AND user_email=?", (deploy_id, email)
+    ).fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Bulunamadı")
+    if row["status"] != "Running":
+        conn.close()
+        raise HTTPException(status_code=400, detail="Sadece çalışan deployment durdurulabilir")
+
+    # FAZ 4 A.2: veritabanındaki container_name'i kullan
+    container_name = (row["container_name"] if row["container_name"]
+                      else compute_container_name(email, row["project_name"]))
+
+    try:
+        http_requests.post(
+            f"{BUILDER_SERVICE_URL}/stop",
+            json={"container_name": container_name},
+            timeout=15
+        )
+    except Exception as e:
+        print(f"[Deploy Service] Stop hatası: {e}")
+
+    conn.execute("UPDATE deployments SET status='Stopped' WHERE id=?", (deploy_id,))
+    conn.commit()
+    conn.close()
+    return {"message": "Durduruldu"}
+
+# ─── Internal endpoints ───────────────────────────────────────
+@app.get("/api/internal/latest-deployment")
+async def latest_deployment(repo_name: str):
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT * FROM deployments WHERE github_url LIKE ? ORDER BY id DESC LIMIT 1",
+        (f"%{repo_name}%",)
+    ).fetchone()
+    conn.close()
+    if not row:
+        raise HTTPException(status_code=404, detail="Deployment bulunamadı")
+    return dict(row)
+
+# ─── FAZ 4 A.1: internal/deploy — upsert fix ─────────────────────────────────
+@app.post("/api/internal/deploy")
+async def internal_deploy(request: Request, bg: BackgroundTasks):
+    """
+    GitHub push webhook'undan tetiklenen otomatik deploy endpoint'i.
+
+    FAZ 4 A.1 değişikliği:
+        Endpoint başında projects tablosuna upsert yapılır.
+        Bu sayede push-to-deploy ile gelen deploy'lar Projects sayfasında görünür.
+
+    FAZ 4 A.2 değişikliği:
+        container_name ve subdomain artık user_email + project_name kombinasyonundan
+        hesaplanır; builder'a payload ile iletilir.
+    """
+    data         = await request.json()
+    user_email   = data.get("user_email", "")
+    project_name = data.get("project_name", "")
+    github_url   = data.get("github_url", "")
+    github_token = data.get("github_token", "")
+
+    if not project_name:
+        raise HTTPException(status_code=422, detail="project_name zorunlu")
+
+    conn = get_connection()
+
+    # ── A.1: Projects tablosuna upsert ───────────────────────────────────────
+    # Push-to-deploy ile gelen deploy'lar artık Projects sayfasında görünür.
+    if github_url and user_email:
+        upsert_project(conn, user_email, project_name, github_url)
+    else:
+        print(f"[Deploy Service] internal/deploy: upsert atlandı "
+              f"(user_email={user_email!r}, github_url={github_url!r})")
+
+    # ── A.2: Kullanıcı bazlı container adı hesapla ───────────────────────────
+    container_name = compute_container_name(user_email or "anon", project_name)
+    subdomain      = compute_subdomain(user_email or "anon", project_name)
+
+    deploy_id = start_deployment(conn, user_email, project_name, github_url, container_name)
+    conn.close()
+
+    bg.add_task(trigger_builder, deploy_id, github_url, project_name,
+                github_token, container_name, subdomain)
+    return {"message": "Redeploy başlatıldı", "deploy_id": deploy_id}
+
+# ─── Health ───────────────────────────────────────────────────
+@app.get("/health")
+async def health():
+    try:
+        conn = get_connection()
+        conn.execute("SELECT 1").fetchone()
+        conn.close()
+        return {"status": "ok", "service": "deploy-service"}
+    except Exception as e:
+        return {"status": "error", "detail": str(e)}
+</file>
+
+<file path="docker-stack.yml">
+version: '3.8'
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Mini PaaS — Docker Swarm Stack
+# Kullanim: docker stack deploy -c docker-stack.yml mini-paas
+# ─────────────────────────────────────────────────────────────────────────────
+
+secrets:
+  jwt_secret:
+    external: true
+  webhook_secret:
+    external: true
+  github_client_secret:
+    external: true
+  ngrok_authtoken:
+    external: true
+
+services:
+
+  # ── 1. TRAEFIK ────────────────────────────────────────────────
+  traefik:
+    image: traefik:v2.10
+    networks:
+      - paas-net
+    command:
+      - "--api.insecure=true"
+      - "--entrypoints.web.address=:80"
+      - "--providers.docker=false"
+      - "--providers.file.filename=/etc/traefik/dynamic.yml"
+      - "--providers.file.watch=true"
+      - "--metrics.prometheus=true"
+      - "--metrics.prometheus.addEntryPointsLabels=true"
+      - "--metrics.prometheus.addRoutersLabels=true"
+      - "--log.level=ERROR"
+    ports:
+      - "8090:80"
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik_dynamic.yml:/etc/traefik/dynamic.yml
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+
+  # ── 2. AUTH SERVICE ───────────────────────────────────────────
+  auth-service:
+    build: ./auth-service
+    # NOT: Swarm'da build desteklenmez; onceden image build edip push etmek gerekir.
+    # Simdilik gelistirme asamasinda docker-compose ile build, stack ile deploy yapilabilir.
+    # Veya: image: localhost:5001/auth-service:latest (local registry ile)
+    image: mini-paas/auth-service:latest
+    networks:
+      - paas-net
+    ports:
+      - "5002:8001"
+    volumes:
+      - auth-data:/app/data
+    environment:
+      - AUTH_SERVICE_URL=http://auth-service:8001
+    secrets:
+      - jwt_secret
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    deploy:
+      # FAZ 4: SQLite dosyası her replica'da ayrı olduğundan replicas=1 zorunlu.
+      # Çözüm: Faz 5'te PostgreSQL'e geçince replicas artırılabilir.
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+
+  # ── 3. DEPLOY SERVICE ─────────────────────────────────────────
+  deploy-service:
+    image: mini-paas/deploy-service:latest
+    networks:
+      - paas-net
+    ports:
+      - "5003:8003"
+    volumes:
+      - deploy-data:/app/data
+    environment:
+      - AUTH_SERVICE_URL=http://auth-service:8001
+      - BUILDER_SERVICE_URL=http://builder-service:5000
+      - GITHUB_SERVICE_URL=http://github-service:8002
+      - REDIS_URL=redis://redis:6379
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID:-}
+    secrets:
+      - jwt_secret
+      - webhook_secret
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8003/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    deploy:
+      # FAZ 4: SQLite dosyası her replica'da ayrı olduğundan replicas=1 zorunlu.
+      # Çözüm: Faz 5'te PostgreSQL'e geçince replicas artırılabilir.
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+
+  # ── 4. GITHUB SERVICE ─────────────────────────────────────────
+  github-service:
+    image: mini-paas/github-service:latest
+    networks:
+      - paas-net
+    ports:
+      - "5004:8002"
+    volumes:
+      - github-data:/app/data
+    environment:
+      - AUTH_SERVICE_URL=http://auth-service:8001
+      - DEPLOY_SERVICE_URL=http://deploy-service:8003
+      - REDIS_URL=redis://redis:6379
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID:-}
+    secrets:
+      - jwt_secret
+      - github_client_secret
+      - webhook_secret
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    deploy:
+      # FAZ 4: SQLite dosyası her replica'da ayrı olduğundan replicas=1 zorunlu.
+      # Çözüm: Faz 5'te PostgreSQL'e geçince replicas artırılabilir.
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+
+  # ── 5. BUILDER SERVICE ────────────────────────────────────────
+  # replicas: 1 — Docker socket erisimi ve traefik_dynamic.yml yazma
+  # islemi tek node'da olmali; birden fazla replica race condition olusturur.
+  builder-service:
+    image: mini-paas/builder-service:latest
+    ports:
+      - "5000:5000"
+    networks:
+      - paas-net
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./traefik_dynamic.yml:/etc/traefik/dynamic.yml
+    environment:
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+
+  # ── 6. REDIS ──────────────────────────────────────────────────
+  # Circuit breaker state ve token cache icin.
+  # deploy-service ve github-service bu servisi kullanir.
+  redis:
+    image: redis:7-alpine
+    networks:
+      - paas-net
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+
+  # ── 7. PROMETHEUS ─────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=7d"
+    networks:
+      - paas-net
+    ports:
+      - "9090:9090"
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+
+  # ── 8. GRAFANA ────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:latest
+    networks:
+      - paas-net
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+
+# ── 9. NGROK ──────────────────────────────────────────────────
+  ngrok:
+    image: ngrok/ngrok:latest
+    environment:
+      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
+    command: http github-service:8002 --log=stdout
+    networks:
+      - paas-net
+    ports:
+      - "4040:4040"
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+
+volumes:
+  prometheus-data:
+  grafana-data:
+  redis-data:
+  auth-data:
+  deploy-data:
+  github-data:
+
+networks:
+  paas-net:
+    driver: overlay
+    attachable: true
+    # attachable: true olmali — builder deploy edilen app container'larini
+    # bu ag'a bagliyor. Olmasa app container'lari Traefik'e ulasalamaz.
+</file>
+
+<file path="github-service/main.py">
+from fastapi import FastAPI, HTTPException, Depends, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from pydantic import BaseModel
+from datetime import datetime, timedelta
+from jose import JWTError, jwt           # FAZ 4 A.3 — local doğrulama
+import hashlib, hmac, httpx, os
+from secrets_helper import get_secret
+from database import init_db, get_connection
+# FAZ 4 A.3: circuit_breaker import'u kaldırıldı
+# from circuit_breaker import verify_token_with_circuit_breaker  ← artık yok
+
+SECRET_KEY           = get_secret("jwt_secret",            "JWT_SECRET")
+ALGORITHM             = "HS256"
+GITHUB_CLIENT_ID      = os.getenv("GITHUB_CLIENT_ID")
+GITHUB_CLIENT_SECRET = get_secret("github_client_secret",  "GITHUB_CLIENT_SECRET")
+WEBHOOK_SECRET       = get_secret("webhook_secret",        "WEBHOOK_SECRET")
+DEPLOY_SERVICE_URL    = os.getenv("DEPLOY_SERVICE_URL", "http://deploy-service:8003")
+# AUTH_SERVICE_URL artık kullanılmıyor — A.3 ile bağımlılık kaldırıldı
+
+bearer = HTTPBearer()
+app = FastAPI(title="GitHub Service")
+
+os.makedirs("data", exist_ok=True)
+init_db()
+
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+# ─── FAZ 4 A.3: Local JWT doğrulama ──────────────────────────────────────────
+# Auth Service down olsa bile GitHub Service çalışmaya devam eder.
+async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(bearer)) -> str:
+    try:
+        payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
+        email: str = payload.get("sub")
+        if not email:
+            raise HTTPException(status_code=401, detail="Geçersiz token")
+        return email
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Token geçersiz veya süresi dolmuş")
+
+# ─── Endpoints ────────────────────────────────────────────────
+@app.get("/api/github/login")
+async def github_login(email: str = Depends(verify_token)):
+    state = jwt.encode(
+        {"sub": email, "exp": datetime.utcnow() + timedelta(minutes=10)},
+        SECRET_KEY, algorithm=ALGORITHM
+    )
+    url = (
+        f"https://github.com/login/oauth/authorize"
+        f"?client_id={GITHUB_CLIENT_ID}"
+        f"&scope=repo"
+        f"&state={state}"
+    )
+    return {"redirect_url": url}
+
+@app.get("/api/github/callback")
+async def github_callback(code: str, state: str):
+    try:
+        payload = jwt.decode(state, SECRET_KEY, algorithms=[ALGORITHM])
+        email = payload.get("sub")
+        if not email:
+            raise HTTPException(status_code=400, detail="Geçersiz state")
+    except JWTError:
+        raise HTTPException(status_code=400, detail="State süresi dolmuş veya geçersiz.")
+
+    async with httpx.AsyncClient() as client:
+        res = await client.post(
+            "https://github.com/login/oauth/access_token",
+            headers={"Accept": "application/json"},
+            data={"client_id": GITHUB_CLIENT_ID, "client_secret": GITHUB_CLIENT_SECRET, "code": code}
+        )
+        token_data = res.json()
+
+    github_token = token_data.get("access_token")
+    if not github_token:
+        raise HTTPException(status_code=400, detail="GitHub token alınamadı")
+
+    conn = get_connection()
+    conn.execute("""
+        INSERT INTO github_tokens (email, github_token, updated_at)
+        VALUES (?,?,?)
+        ON CONFLICT(email) DO UPDATE SET github_token=excluded.github_token, updated_at=excluded.updated_at
+    """, (email, github_token, datetime.utcnow().isoformat()))
+    conn.commit()
+    conn.close()
+    print(f"[GitHub Service] OAuth bağlandı → {email}")
+    return RedirectResponse(url="http://localhost:8090/?github=connected")
+
+@app.get("/api/github/status")
+async def github_status(email: str = Depends(verify_token)):
+    conn = get_connection()
+    row = conn.execute("SELECT github_token FROM github_tokens WHERE email=?", (email,)).fetchone()
+    conn.close()
+    return {"connected": bool(row and row["github_token"])}
+
+@app.delete("/api/github/disconnect")
+async def github_disconnect(email: str = Depends(verify_token)):
+    conn = get_connection()
+    conn.execute("UPDATE github_tokens SET github_token=NULL WHERE email=?", (email,))
+    conn.commit()
+    conn.close()
+    return {"message": "GitHub bağlantısı kesildi"}
+
+@app.get("/api/github/token")
+async def get_github_token(email: str):
+    """Deploy Service'in kullanıcı token'ını sorgulaması için internal endpoint."""
+    conn = get_connection()
+    row = conn.execute("SELECT github_token FROM github_tokens WHERE email=?", (email,)).fetchone()
+    conn.close()
+    token = (row["github_token"] or "") if row else ""
+    return {"token": token}
+
+@app.post("/api/github/webhook")
+async def github_webhook(request: Request):
+    signature = request.headers.get("X-Hub-Signature-256", "")
+    body = await request.body()
+    mac = hmac.new(WEBHOOK_SECRET.encode(), body, hashlib.sha256)
+    expected = "sha256=" + mac.hexdigest()
+    if not hmac.compare_digest(signature, expected):
+        raise HTTPException(status_code=401, detail="Geçersiz webhook signature")
+
+    payload = await request.json()
+    if "commits" not in payload:
+        return {"message": "Push değil, atlandı"}
+
+    repo_url  = payload["repository"]["clone_url"]
+    repo_name = payload["repository"]["name"]
+    pusher    = payload["pusher"]["name"]
+    print(f"[GitHub Service] Push alındı → {pusher} → {repo_url}")
+
+    import requests as http_requests
+    try:
+        r = http_requests.get(
+            f"{DEPLOY_SERVICE_URL}/api/internal/latest-deployment",
+            params={"repo_name": repo_name},
+            timeout=5
+        )
+        if r.status_code != 200:
+            return {"message": "Bu repo için deployment bulunamadı"}
+        data = r.json()
+        user_email   = data["user_email"]
+        project_name = data["project_name"]
+    except Exception as e:
+        print(f"[GitHub Service] Deploy Service sorgu hatası: {e}")
+        return {"message": "Deploy Service ulaşılamadı"}
+
+    conn = get_connection()
+    token_row = conn.execute(
+        "SELECT github_token FROM github_tokens WHERE email=?", (user_email,)
+    ).fetchone()
+    github_token = (token_row["github_token"] or "") if token_row else ""
+    conn.close()
+
+    # FAZ 4 A.1: github_url de payload'a ekleniyor
+    # internal/deploy endpoint'i bunu upsert için kullanacak
+    try:
+        r = http_requests.post(
+            f"{DEPLOY_SERVICE_URL}/api/internal/deploy",
+            json={
+                "user_email":   user_email,
+                "project_name": project_name,
+                "github_url":   repo_url,       # A.1: upsert için gerekli
+                "github_token": github_token
+            },
+            timeout=10
+        )
+        return {"message": "Redeploy başlatıldı", "status": r.status_code}
+    except Exception as e:
+        print(f"[GitHub Service] Deploy Service hatası: {e}")
+        return {"message": "Deploy Service ulaşılamadı"}
+
+@app.post("/api/github/register-repo")
+async def register_repo(request: Request, email: str = Depends(verify_token)):
+    """Deploy sonrası repo → kullanıcı eşlemesini kaydet."""
+    data = await request.json()
+    repo_name    = data.get("repo_name", "")
+    project_name = data.get("project_name", "")
+    if not repo_name or not project_name:
+        raise HTTPException(status_code=400, detail="repo_name ve project_name gerekli")
+    conn = get_connection()
+    conn.execute("""
+        INSERT INTO repo_mappings (repo_name, user_email, project_name, updated_at)
+        VALUES (?,?,?,?)
+        ON CONFLICT DO NOTHING
+    """, (repo_name, email, project_name, datetime.utcnow().isoformat()))
+    conn.commit()
+    conn.close()
+    return {"message": "Repo mapping kaydedildi"}
+
+@app.get("/health")
+async def health():
+    try:
+        conn = get_connection()
+        conn.execute("SELECT 1").fetchone()
+        conn.close()
+        return {"status": "ok", "service": "github-service"}
+    except Exception as e:
+        return {"status": "error", "detail": str(e)}
+</file>
+
+<file path="traefik_dynamic.yml">
+http:
+  routers:
+    auth-router:
+      entryPoints:
+      - web
+      priority: 10
+      rule: Host(`localhost`) && (PathPrefix(`/api/register`) || PathPrefix(`/api/login`)
+        || PathPrefix(`/api/me`) || PathPrefix(`/api/auth`))
+      service: auth-service
+    dashboard-router:
+      entryPoints:
+      - web
+      priority: 1
+      rule: Host(`localhost`)
+      service: auth-service
+    deploy-router:
+      entryPoints:
+      - web
+      priority: 10
+      rule: Host(`localhost`) && (PathPrefix(`/api/deploy`) || PathPrefix(`/api/deployments`)
+        || PathPrefix(`/api/status`) || PathPrefix(`/api/webhook`) || PathPrefix(`/api/projects`)
+        || PathPrefix(`/api/internal`))
+      service: deploy-service
+    github-router:
+      entryPoints:
+      - web
+      priority: 10
+      rule: Host(`localhost`) && PathPrefix(`/api/github`)
+      service: github-service
+    omertank36-testapp:
+      entryPoints:
+      - web
+      rule: Host(`omertank36-testapp.localhost`)
+      service: omertank36-testapp
+    omertank37-testapp:
+      entryPoints:
+      - web
+      rule: Host(`omertank37-testapp.localhost`)
+      service: omertank37-testapp
+    test2:
+      entryPoints:
+      - web
+      rule: Host(`test2.localhost`)
+      service: test2
+    testapp:
+      entryPoints:
+      - web
+      rule: Host(`testapp.localhost`)
+      service: testapp
+  services:
+    auth-service:
+      loadBalancer:
+        servers:
+        - url: http://auth-service:8001
+    deploy-service:
+      loadBalancer:
+        servers:
+        - url: http://deploy-service:8003
+    github-service:
+      loadBalancer:
+        servers:
+        - url: http://github-service:8002
+    omertank36-testapp:
+      loadBalancer:
+        servers:
+        - url: http://omertank36_testapp:80
+    omertank37-testapp:
+      loadBalancer:
+        servers:
+        - url: http://omertank37_testapp:80
+    test2:
+      loadBalancer:
+        servers:
+        - url: http://app-test2:80
+    testapp:
+      loadBalancer:
+        servers:
+        - url: http://app-testapp:80
+</file>
+
+<file path="builder-service/git_manager.py">
+import subprocess
+import os
+import shutil
+import stat
+import re
+
+
+def on_rm_error(func, path, exc_info):
+    """Windows'ta salt-okunur dosyaları silerken izin hatası çıkar. Bunu çözer."""
+    os.chmod(path, stat.S_IWRITE)
+    func(path)
+
+
+def build_authenticated_url(repo_url: str, user_token: str = "") -> str:
+    """
+    Token önceliği:
+      1. Kullanıcının OAuth token'ı (GitHub ile giriş yaptıysa)
+      2. Sistem GITHUB_TOKEN (.env dosyası)
+      3. Token yoksa URL'yi olduğu gibi bırak (public repo)
+    """
+    token = user_token.strip() or os.environ.get("GITHUB_TOKEN", "").strip()
+
+    if not token:
+        print("[git] ⚠️ Token bulunamadı — public repo olarak deneniyor")
+        return repo_url
+
+    print("[git] Token ile kimlik doğrulama aktif")
+    base_url = repo_url.replace("https://", "")
+    return f"https://oauth2:{token}@{base_url}"
+
+
+def clone_repo(repo_url: str, project_name: str, user_token: str = ""):
+    """
+    GitHub reposunu ./workspace/<project_name> klasörüne klonlar.
+    """
+    base_dir = "./workspace"
+    os.makedirs(base_dir, exist_ok=True)
+
+    project_path = os.path.join(base_dir, project_name)
+    log_path = os.path.join(base_dir, f"{project_name}.log")
+
+    # Eski klonu temizle
+    if os.path.exists(project_path):
+        print(f"[git] Eski '{project_name}' klasörü siliniyor...")
+        shutil.rmtree(project_path, onerror=on_rm_error)
+
+    authenticated_url = build_authenticated_url(repo_url, user_token)
+
+    print(f"[git] Repo klonlanıyor: {project_name}")
+
+    try:
+        result = subprocess.run(
+            ["git", "clone", "--depth", "1", authenticated_url, project_path],
+            capture_output=True,
+            text=True,
+            timeout=120
+        )
+
+        if result.returncode == 0:
+            print(f"[git] ✅ Başarıyla klonlandı: {project_path}")
+            return project_path
+        else:
+            # Token'ı log'dan gizle
+            safe_err = result.stderr.replace(
+                os.environ.get("GITHUB_TOKEN", ""), "***"
+            )
+            if user_token:
+                safe_err = safe_err.replace(user_token, "***")
+
+            print(f"[git] ❌ Clone hatası:\n{safe_err}")
+
+            # Hata mesajını log dosyasına yaz (dashboard drawer'da görünsün)
+            with open(log_path, "w", encoding="utf-8") as f:
+                f.write(f"[git] ❌ Repo klonlanamadı:\n")
+                f.write(safe_err + "\n")
+                f.write("[error occurred]\n")
+
+            return None
+
+    except subprocess.TimeoutExpired:
+        msg = "[git] ❌ Zaman aşımı — 2 dakika içinde tamamlanamadı"
+        print(msg)
+        with open(log_path, "w", encoding="utf-8") as f:
+            f.write(msg + "\n")
+            f.write("[error occurred]\n")
+        return None
+
+    except Exception as e:
+        msg = f"[git] ❌ Beklenmeyen hata: {e}"
+        print(msg)
+        with open(log_path, "w", encoding="utf-8") as f:
+            f.write(msg + "\n")
+            f.write("[error occurred]\n")
+        return None
+</file>
+
+<file path="builder-service/docker_manager.py">
+from asyncio import log
+import subprocess
+import os
+import yaml
+import threading
+
+# traefik_dynamic.yml'e aynı anda iki build yazmasın diye kilit
+_traefik_lock = threading.Lock()
+
+DYNAMIC_YML = "/etc/traefik/dynamic.yml"
+
+
+def get_paas_network() -> str:
+    """
+    Swarm stack deploy edilince network adı "mini-paas_paas-net" olur.
+    docker-compose ile çalışıyorsa "paas-net" kalır.
+    PAAS_NETWORK env variable ile override edilebilir.
+    """
+    if os.getenv("PAAS_NETWORK"):
+        return os.getenv("PAAS_NETWORK")
+    result = subprocess.run(
+        ["docker", "network", "ls", "--filter", "name=paas-net", "--format", "{{.Name}}"],
+        capture_output=True, text=True
+    )
+    networks = [n.strip() for n in result.stdout.strip().splitlines() if "paas-net" in n]
+    for n in networks:
+        if "_paas-net" in n:
+            return n
+    return networks[0] if networks else "paas-net"
+
+
+def get_traefik_container_id() -> str:
+    """
+    Swarm'da container adı 'mini-paas_traefik.1.xxxxx' formatında olur,
+    sabit 'traefik_proxy' adı artık geçerli değil.
+    """
+    result = subprocess.run(
+        ["docker", "ps", "-q", "--filter", "name=mini-paas_traefik"],
+        capture_output=True, text=True
+    )
+    container_id = result.stdout.strip()
+    if not container_id:
+        result = subprocess.run(
+            ["docker", "ps", "-q", "--filter", "name=traefik_proxy"],
+            capture_output=True, text=True
+        )
+        container_id = result.stdout.strip()
+    return container_id
+
+
+def update_traefik(router_name: str, container_name: str):
+    """
+    Deploy edilen uygulamayı Traefik'e kayıt eder.
+
+    FAZ 4 A.2:
+        router_name  = subdomain (örn. "omertank36-testapp")
+        container_name = benzersiz container adı (örn. "omertank36_testapp")
+
+    Önceki davranış:
+        router_name = project_name (örn. "testapp")
+        container_name = "app-testapp"
+    """
+    with _traefik_lock:
+        try:
+            with open(DYNAMIC_YML, "r") as f:
+                config = yaml.safe_load(f) or {}
+        except Exception:
+            config = {}
+
+        config.setdefault("http", {})
+        config["http"].setdefault("routers", {})
+        config["http"].setdefault("services", {})
+
+        # router_name artık subdomain değeri (örn. omertank36-testapp)
+        config["http"]["routers"][router_name] = {
+            "rule":        f"Host(`{router_name}.localhost`)",
+            "service":     router_name,
+            "entryPoints": ["web"]
+        }
+
+        # container_name artık kullanıcı bazlı benzersiz (örn. omertank36_testapp)
+        config["http"]["services"][router_name] = {
+            "loadBalancer": {
+                "servers": [{"url": f"http://{container_name}:80"}]
+            }
+        }
+
+        with open(DYNAMIC_YML, "w") as f:
+            yaml.dump(config, f, default_flow_style=False)
+
+        print(f"[traefik] ✅ Routing: {router_name}.localhost → {container_name}")
+
+
+def restart_traefik():
+    """
+    Swarm modunda Traefik container'ını yeniden başlatır.
+    Windows'ta --providers.file.watch=true çalışmadığı için gerekli.
+    """
+    container_id = get_traefik_container_id()
+    if not container_id:
+        print("[!] Traefik container bulunamadı, restart atlandı")
+        return
+    try:
+        subprocess.run(
+            ["docker", "restart", container_id],
+            capture_output=True, timeout=30
+        )
+        print(f"[+] Traefik yenilendi (container: {container_id[:12]})")
+    except Exception as e:
+        print(f"[!] Traefik restart başarısız: {e}")
+
+
+def build_and_deploy(project_path: str, project_name: str,
+                     container_name: str = "", subdomain: str = "") -> bool:
+    """
+    3 adımda deploy:
+      1. docker build  → klonlanan repodan image üret
+      2. docker run    → container'ı paas-net ağında başlat
+      3. traefik güncelle → subdomain yönlendirmesini ekle
+
+    FAZ 4 A.2 parametreleri:
+        container_name : Kullanıcı bazlı benzersiz container adı.
+                         Örn: "omertank36_testapp"
+                         Boş gelirse eski davranışa (app-{project_name}) geri düşer.
+        subdomain      : Traefik router adı ve Host kuralı.
+                         Örn: "omertank36-testapp"
+                         Boş gelirse project_name kullanılır.
+    """
+    image_name = f"{project_name.lower()}-img"
+    log_path   = f"./workspace/{project_name.lower()}.log"
+
+    # FAZ 4 A.2: geriye uyumluluk — parametre gelmezse eski davranış
+    if not container_name:
+        container_name = f"app-{project_name.lower()}"
+    if not subdomain:
+        subdomain = project_name.lower().replace("_", "-").replace(" ", "-")
+
+    os.makedirs("./workspace", exist_ok=True)
+
+    with open(log_path, "a", encoding="utf-8") as log_file:
+
+        def _log(msg):
+            print(msg, flush=True)
+            log_file.write(msg + "\n")
+            log_file.flush()
+
+        _log(f"\n[*] '{project_name}' için build başlatıldı...")
+        _log(f"[*] Container: {container_name} | Subdomain: {subdomain}.localhost")
+
+        # Eski image varsa sil
+        _log(f"[*] Eski image temizleniyor: {image_name}")
+        subprocess.run(
+            ["docker", "rmi", "-f", image_name],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+
+        try:
+            # ── 1. Docker image build ─────────────────────────────
+            _log(f"[*] Image build ediliyor: {image_name}")
+            subprocess.run(
+                ["docker", "build", "--progress=plain", "-t", image_name, project_path],
+                check=True,
+                stdout=log_file,
+                stderr=subprocess.STDOUT
+            )
+            _log(f"[+] Image oluşturuldu: {image_name}")
+
+            # ── 2. Eski container varsa sil, yenisini başlat ──────
+            subprocess.run(
+                ["docker", "rm", "-f", container_name],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+
+            paas_network = get_paas_network()
+            _log(f"[*] Container başlatılıyor: {container_name} (network: {paas_network})")
+            subprocess.run(
+                [
+                    "docker", "run", "-d",
+                    "--name",    container_name,   # FAZ 4 A.2: kullanıcı bazlı benzersiz
+                    "--network", paas_network,
+                    image_name
+                ],
+                check=True,
+                stdout=log_file,
+                stderr=subprocess.STDOUT
+            )
+            _log(f"[+] Container başlatıldı: {container_name}")
+
+            # ── 3. Traefik'e subdomain kaydını ekle ───────────────
+            # FAZ 4 A.2: router_name = subdomain (örn. omertank36-testapp)
+            update_traefik(subdomain, container_name)
+            restart_traefik()
+
+            _log(f"[+] SUCCESS! Uygulama yayında:")
+            _log(f"    http://{subdomain}.localhost:8090")
+            _log("[SUCCESS!]")
+            return True
+
+        except subprocess.CalledProcessError as e:
+            _log(f"[-] Docker hatası: {e}")
+            _log("[error occurred]")
+            return False
+        except Exception as e:
+            _log(f"[-] Beklenmeyen hata: {e}")
+            _log("[error occurred]")
+            return False
+
+
+if __name__ == "__main__":
+    build_and_deploy("./workspace/sample-app", "sample-app")
+</file>
+
+<file path="docker-compose.yml">
+version: '3.8'
+
+services:
+
+  # ── 1. TRAEFIK ────────────────────────────────────────────────
+  traefik:
+    image: traefik:v2.10
+    container_name: traefik_proxy
+    networks:
+      - paas-net
+    command:
+      - "--api.insecure=true"
+      - "--entrypoints.web.address=:80"
+      - "--providers.docker=false"
+      - "--providers.file.filename=/etc/traefik/dynamic.yml"
+      - "--providers.file.watch=true"
+      - "--metrics.prometheus=true"
+      - "--metrics.prometheus.addEntryPointsLabels=true"
+      - "--metrics.prometheus.addRoutersLabels=true"
+      - "--log.level=ERROR"
+    ports:
+      - "8090:80"
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik_dynamic.yml:/etc/traefik/dynamic.yml
+
+  # ── 2. AUTH SERVICE ───────────────────────────────────────────
+  auth-service:
+    env_file:
+      - .env
+    build: ./auth-service
+    container_name: paas_auth
+    networks:
+      - paas-net
+    ports:
+      - "5002:8001"
+    volumes:
+      - ./auth-service/data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+
+  # ── 3. DEPLOY SERVICE ─────────────────────────────────────────
+  deploy-service:
+    env_file:
+      - .env
+    build: ./deploy-service
+    container_name: paas_deploy
+    networks:
+      - paas-net
+    ports:
+      - "5003:8003"
+    volumes:
+      - ./deploy-service/data:/app/data
+    environment:
+      - AUTH_SERVICE_URL=http://auth-service:8001
+      - BUILDER_SERVICE_URL=http://builder-service:5000
+      - GITHUB_SERVICE_URL=http://github-service:8002
+    depends_on:
+      - auth-service
+      - builder-service
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8003/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+
+  # ── 4. GITHUB SERVICE ─────────────────────────────────────────
+  github-service:
+    env_file:
+      - .env
+    build: ./github-service
+    container_name: paas_github
+    networks:
+      - paas-net
+    ports:
+      - "5004:8002"
+    volumes:
+      - ./github-service/data:/app/data
+    environment:
+      - AUTH_SERVICE_URL=http://auth-service:8001
+      - DEPLOY_SERVICE_URL=http://deploy-service:8003
+    depends_on:
+      - auth-service
+      - deploy-service
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+
+  # ── 5. BUILDER SERVICE ────────────────────────────────────────
+  builder-service:
+    env_file:
+      - .env
+    build: ./builder-service
+    container_name: paas_builder
+    ports:
+      - "5000:5000"
+    networks:
+      - paas-net
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./traefik_dynamic.yml:/etc/traefik/dynamic.yml
+    environment:
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+
+  # ── 6. PROMETHEUS ─────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: paas_monitor
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=7d"
+    networks:
+      - paas-net
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
+
+  # ── 7. GRAFANA ────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:latest
+    container_name: paas_dashboard
+    networks:
+      - paas-net
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    restart: unless-stopped
+
+  # ── 8. NGROK ──────────────────────────────────────────────────
+  ngrok:
+    image: ngrok/ngrok:latest
+    container_name: paas_ngrok
+    environment:
+      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
+    command: http github-service:8002 --log=stdout
+    networks:
+      - paas-net
+    ports:
+      - "4040:4040"
+    restart: unless-stopped
+    depends_on:
+      - github-service
+
+volumes:
+  prometheus-data:
+  grafana-data:
+
+networks:
+  paas-net:
+    name: paas-net
+    driver: bridge
+</file>
+
+<file path="builder-service/main.py">
+from fastapi import FastAPI, BackgroundTasks, WebSocket, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import Optional
+import asyncio, os, re, subprocess, requests
+
+from git_manager import clone_repo
+from docker_manager import build_and_deploy
+
+app = FastAPI(title="Builder Service")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+DEPLOY_SERVICE_URL = os.getenv("DEPLOY_SERVICE_URL", "http://deploy-service:8003")
+
+# ─── Models ───────────────────────────────────────────────────
+class DeployRequest(BaseModel):
+    deploy_id:    int
+    repo_url:     str
+    project_name: str
+    github_token: str    = ""
+    # FAZ 4 A.2: kullanıcı bazlı benzersiz container adı ve subdomain
+    # deploy-service tarafından hesaplanıp gönderilir.
+    # Boş gelirse eski davranışa (app-{project}) geri düşer — geriye uyumluluk.
+    container_name: Optional[str] = ""
+    subdomain:      Optional[str] = ""
+
+    def validate_repo_url(self):
+        url = self.repo_url.strip()
+        if not url:
+            raise ValueError("repo_url boş olamaz")
+        if not (url.startswith("http://") or url.startswith("https://") or url.startswith("git@")):
+            raise ValueError(f"Geçersiz repo URL'si: '{url}'")
+        return url
+
+# ─── Pipeline ─────────────────────────────────────────────────
+def run_pipeline(deploy_id: int, repo_url: str, project_name: str,
+                 github_token: str = "", container_name: str = "", subdomain: str = ""):
+    # project_name build için temizle (image adı olarak kullanılacak)
+    clean_name = re.sub(r'[^a-z0-9-]', '-', project_name.lower().strip()).strip('-')
+    clean_name = re.sub(r'-+', '-', clean_name)
+
+    # FAZ 4 A.2: container_name gelmemişse eski davranışa geri dön
+    if not container_name:
+        container_name = f"app-{clean_name}"
+        print(f"[builder] container_name gelmedi, fallback: {container_name}")
+
+    # FAZ 4 A.2: subdomain gelmemişse proje adından türet
+    if not subdomain:
+        subdomain = clean_name
+        print(f"[builder] subdomain gelmedi, fallback: {subdomain}")
+
+    project_path = clone_repo(repo_url, clean_name, github_token)
+    status = "Failed"
+
+    if project_path:
+        # FAZ 4 A.2: container_name ve subdomain build_and_deploy'a iletiliyor
+        success = build_and_deploy(project_path, clean_name, container_name, subdomain)
+        if success:
+            status = "Running"
+
+    # Webhook: Deploy Service'e sonucu bildir
+    try:
+        requests.post(
+            f"{DEPLOY_SERVICE_URL}/api/webhook",
+            json={
+                "deploy_id": deploy_id,
+                "status":    status,
+                "port":      8090,
+                "subdomain": f"{subdomain}.localhost"
+            },
+            timeout=10
+        )
+        print(f"[builder] Webhook → ID:{deploy_id} | {status} | {subdomain}.localhost")
+    except Exception as e:
+        print(f"[builder] Webhook hatası: {e}")
+
+# ─── Endpoints ────────────────────────────────────────────────
+@app.get("/health")
+async def health():
+    return {"status": "ok", "service": "builder-service"}
+
+@app.get("/logs/{project_name}")
+async def get_logs(project_name: str):
+    project_name = re.sub(r'[^a-z0-9-]', '-', project_name.lower().strip()).strip('-')
+    log_path = f"./workspace/{project_name}.log"
+    if not os.path.exists(log_path):
+        raise HTTPException(status_code=404, detail="Log dosyası bulunamadı")
+    with open(log_path, "r", encoding="utf-8") as f:
+        lines = f.readlines()
+    return {"lines": [l.strip() for l in lines if l.strip()]}
+
+@app.post("/deploy")
+async def deploy_project(req: DeployRequest, background_tasks: BackgroundTasks):
+    try:
+        req.validate_repo_url()
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    background_tasks.add_task(
+        run_pipeline,
+        req.deploy_id,
+        req.repo_url,
+        req.project_name,
+        req.github_token,
+        req.container_name or "",   # FAZ 4 A.2
+        req.subdomain or "",        # FAZ 4 A.2
+    )
+    return {
+        "message":        f"{req.project_name} için deployment başlatıldı",
+        "deploy_id":      req.deploy_id,
+        "logs_websocket": f"/ws/{req.project_name}"
+    }
+
+@app.websocket("/ws/{project_name}")
+async def websocket_endpoint(websocket: WebSocket, project_name: str):
+    await websocket.accept()
+    log_path = f"./workspace/{project_name.lower()}.log"
+
+    waited = 0
+    while not os.path.exists(log_path):
+        await asyncio.sleep(0.5)
+        waited += 0.5
+        if waited >= 60:
+            await websocket.send_text("[!] Log dosyası bulunamadı, zaman aşımı.")
+            await websocket.close()
+            return
+
+    with open(log_path, "r", encoding="utf-8") as f:
+        while True:
+            line = f.readline()
+            if not line:
+                await asyncio.sleep(0.3)
+                continue
+            line = line.strip()
+            if not line:
+                continue
+            await websocket.send_text(line)
+            if "[SUCCESS!]" in line or "[error occurred]" in line.lower():
+                await asyncio.sleep(0.5)
+                break
+
+    await websocket.close()
+
+@app.post("/cleanup")
+async def cleanup(data: dict):
+    container_name = data.get("container_name", "")
+    image_name     = data.get("image_name", "")
+    if container_name:
+        subprocess.run(["docker", "rm", "-f", container_name], capture_output=True)
+    if image_name:
+        subprocess.run(["docker", "rmi", "-f", image_name], capture_output=True)
+    print(f"[cleanup] {container_name} ve {image_name} silindi")
+    return {"message": "Temizlendi"}
+
+@app.post("/stop")
+async def stop_container(data: dict):
+    container_name = data.get("container_name", "")
+    if not container_name:
+        raise HTTPException(status_code=400, detail="container_name gerekli")
+    result = subprocess.run(["docker", "stop", container_name], capture_output=True, text=True)
+    if result.returncode == 0:
+        print(f"[stop] {container_name} durduruldu")
+        return {"message": "Durduruldu"}
+    else:
+        raise HTTPException(status_code=500, detail=f"Durdurulamadı: {result.stderr}")
+</file>
+
+</files>

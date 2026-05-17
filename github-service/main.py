@@ -10,6 +10,16 @@ from secrets_helper import get_secret
 from database import init_db, get_connection
 # FAZ 4 A.3: circuit_breaker import'u kaldırıldı
 # from circuit_breaker import verify_token_with_circuit_breaker  ← artık yok
+import logging
+logger = logging.getLogger()
+from pythonjsonlogger import jsonlogger
+handler = logging.StreamHandler()
+formatter = jsonlogger.JsonFormatter('%(asctime)s %(levelname)s %(name)s%(message)s %(service_name)s')
+handler.setFormatter(formatter)
+logger.addHandler(handler)
+logger.setLevel(logging.INFO)
+service_logger = logging.LoggerAdapter(logger, extra={"service_name": "github-service"})
+app=FastAPI(title="GitHub Service")
 
 SECRET_KEY           = get_secret("jwt_secret",            "JWT_SECRET")
 ALGORITHM             = "HS256"
@@ -84,7 +94,7 @@ async def github_callback(code: str, state: str):
     """, (email, github_token, datetime.utcnow().isoformat()))
     conn.commit()
     conn.close()
-    print(f"[GitHub Service] OAuth bağlandı → {email}")
+    service_logger.info(f"[GitHub Service] OAuth bağlandı → {email}")
     return RedirectResponse(url="http://localhost:8090/?github=connected")
 
 @app.get("/api/github/status")
@@ -100,6 +110,7 @@ async def github_disconnect(email: str = Depends(verify_token)):
     conn.execute("UPDATE github_tokens SET github_token=NULL WHERE email=?", (email,))
     conn.commit()
     conn.close()
+    service_logger.info(f"[GitHub Service] GitHub bağlantısı kesildi → {email}")
     return {"message": "GitHub bağlantısı kesildi"}
 
 @app.get("/api/github/token")
@@ -127,7 +138,7 @@ async def github_webhook(request: Request):
     repo_url  = payload["repository"]["clone_url"]
     repo_name = payload["repository"]["name"]
     pusher    = payload["pusher"]["name"]
-    print(f"[GitHub Service] Push alındı → {pusher} → {repo_url}")
+    service_logger.info(f"[GitHub Service] Push alındı → {pusher} → {repo_url}")
 
     import requests as http_requests
     try:
@@ -142,7 +153,7 @@ async def github_webhook(request: Request):
         user_email   = data["user_email"]
         project_name = data["project_name"]
     except Exception as e:
-        print(f"[GitHub Service] Deploy Service sorgu hatası: {e}")
+        service_logger.error(f"[GitHub Service] Deploy Service sorgu hatası: {e}")
         return {"message": "Deploy Service ulaşılamadı"}
 
     conn = get_connection()
@@ -167,7 +178,7 @@ async def github_webhook(request: Request):
         )
         return {"message": "Redeploy başlatıldı", "status": r.status_code}
     except Exception as e:
-        print(f"[GitHub Service] Deploy Service hatası: {e}")
+        service_logger.error(f"[GitHub Service] Deploy Service hatası: {e}")
         return {"message": "Deploy Service ulaşılamadı"}
 
 @app.post("/api/github/register-repo")
