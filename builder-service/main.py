@@ -19,6 +19,8 @@ app.add_middleware(
 
 DEPLOY_SERVICE_URL = os.getenv("DEPLOY_SERVICE_URL", "http://deploy-service:8003")
 
+active_builds = {}
+
 # ─── Models ───────────────────────────────────────────────────
 class DeployRequest(BaseModel):
     deploy_id:    int
@@ -102,16 +104,33 @@ async def deploy_project(req: DeployRequest, background_tasks: BackgroundTasks):
         req.validate_repo_url()
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    
+    normalized_project = req.project_name.lower().strip()
 
-    background_tasks.add_task(
-        run_pipeline,
-        req.deploy_id,
-        req.repo_url,
-        req.project_name,
-        req.github_token,
-        req.container_name or "",   # FAZ 4 A.2
-        req.subdomain or "",        # FAZ 4 A.2
-    )
+    if normalized_project in active_builds:
+        raise HTTPException(
+            status_code=409,
+            detail="Build already in progress"
+        )
+    
+    active_builds[normalized_project] = True
+
+    async def pipeline_wrapper():
+        try:
+            run_pipeline(
+                req.deploy_id,
+                req.repo_url,
+                req.project_name,
+                req.github_token,
+                req.container_name or "",
+                req.subdomain or "",
+            )
+        finally:
+            active_builds.pop(normalized_project, None)
+            print(f"[builder] Build lock kaldırıldı: {normalized_project}")
+
+    background_tasks.add_task(pipeline_wrapper)
+    
     return {
         "message":        f"{req.project_name} için deployment başlatıldı",
         "deploy_id":      req.deploy_id,
