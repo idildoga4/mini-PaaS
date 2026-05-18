@@ -1,5 +1,9 @@
 # GitHub Service
 
+import uuid
+import contextvars
+import logging
+from pythonjsonlogger import jsonlogger
 from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
@@ -10,18 +14,23 @@ from jose import JWTError, jwt           # FAZ 4 A.3 — local doğrulama
 import hashlib, hmac, httpx, os
 from secrets_helper import get_secret
 from database import init_db, get_connection
-# FAZ 4 A.3: circuit_breaker import'u kaldırıldı
-# from circuit_breaker import verify_token_with_circuit_breaker  ← artık yok
-import logging
+
+trace_id_var = contextvars.ContextVar("trace_id", default='no-trace')
+
+class TraceIdFilter(logging.Filter):
+    def filter(self, record):
+        record.trace_id = trace_id_var.get()
+        return True
+
 logger = logging.getLogger()
+logger.addFilter(TraceIdFilter())
 from pythonjsonlogger import jsonlogger
 handler = logging.StreamHandler()
-formatter = jsonlogger.JsonFormatter('%(asctime)s %(levelname)s %(name)s%(message)s %(service_name)s')
+formatter = jsonlogger.JsonFormatter('%(asctime)s %(levelname)s %(name)s %(message)s %(service_name)s %(trace_id)s')
 handler.setFormatter(formatter)
 logger.addHandler(handler)
 logger.setLevel(logging.INFO)
 service_logger = logging.LoggerAdapter(logger, extra={"service_name": "github-service"})
-app=FastAPI(title="GitHub Service")
 
 SECRET_KEY           = get_secret("jwt_secret",            "JWT_SECRET")
 ALGORITHM             = "HS256"
@@ -29,7 +38,6 @@ GITHUB_CLIENT_ID      = os.getenv("GITHUB_CLIENT_ID")
 GITHUB_CLIENT_SECRET = get_secret("github_client_secret",  "GITHUB_CLIENT_SECRET")
 WEBHOOK_SECRET       = get_secret("webhook_secret",        "WEBHOOK_SECRET")
 DEPLOY_SERVICE_URL    = os.getenv("DEPLOY_SERVICE_URL", "http://deploy-service:8003")
-# AUTH_SERVICE_URL artık kullanılmıyor — A.3 ile bağımlılık kaldırıldı
 
 bearer = HTTPBearer()
 app = FastAPI(title="GitHub Service")
@@ -39,8 +47,16 @@ init_db()
 
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
+@app.middleware("http")
+async def trace_middleware(request: Request, call_next):
+    trace_id = request.headers.get("X-Trace-Id", str(uuid.uuid4())[:8])
+    token = trace_id_var.set(trace_id)
+    response = await call_next(request)
+    response.headers["X-Trace-Id"] = trace_id
+    trace_id_var.reset(token)
+    return response
+
 # ─── FAZ 4 A.3: Local JWT doğrulama ──────────────────────────────────────────
-# Auth Service down olsa bile GitHub Service çalışmaya devam eder.
 async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(bearer)) -> str:
     try:
         payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
@@ -140,13 +156,15 @@ async def github_webhook(request: Request):
     repo_url  = payload["repository"]["clone_url"]
     repo_name = payload["repository"]["name"]
     pusher    = payload["pusher"]["name"]
-    service_logger.info(f"[GitHub Service] Push alındı → {pusher} → {repo_url}")
+    service_logger.info(f"[GitHub Service] Push alındı → {pusher} → {repo_url}",
+                        extra={"trace_id": trace_id_var.get()})
 
     import requests as http_requests
     try:
         r = http_requests.get(
             f"{DEPLOY_SERVICE_URL}/api/internal/latest-deployment",
             params={"repo_name": repo_name},
+            headers={"X-Trace-Id": trace_id_var.get()},
             timeout=5
         )
         if r.status_code != 200:
@@ -165,17 +183,16 @@ async def github_webhook(request: Request):
     github_token = (token_row["github_token"] or "") if token_row else ""
     conn.close()
 
-    # FAZ 4 A.1: github_url de payload'a ekleniyor
-    # internal/deploy endpoint'i bunu upsert için kullanacak
     try:
         r = http_requests.post(
             f"{DEPLOY_SERVICE_URL}/api/internal/deploy",
             json={
                 "user_email":   user_email,
                 "project_name": project_name,
-                "github_url":   repo_url,       # A.1: upsert için gerekli
+                "github_url":   repo_url,
                 "github_token": github_token
             },
+            headers={"X-Trace-Id": trace_id_var.get()},
             timeout=10
         )
         return {"message": "Redeploy başlatıldı", "status": r.status_code}
