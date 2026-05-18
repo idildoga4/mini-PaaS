@@ -145,7 +145,11 @@ async def deploy_project(req: DeployRequest, background_tasks: BackgroundTasks):
 
     async def pipeline_wrapper():
         try:
-            run_pipeline(
+            # asyncio.to_thread: run_pipeline senkron ve uzun süren bir fonksiyon
+            # (git clone + docker build). await olmadan çağrılırsa event loop bloklanır;
+            # WebSocket, /health ve diğer endpoint'ler yanıt veremez hale gelir.
+            await asyncio.to_thread(
+                run_pipeline,
                 req.deploy_id,
                 req.repo_url,
                 req.project_name,
@@ -217,3 +221,25 @@ async def stop_container(data: dict):
         return {"message": "Durduruldu"}
     else:
         raise HTTPException(status_code=500, detail=f"Durdurulamadı: {result.stderr}")
+
+@app.get("/container-status")
+async def container_status(container_name: str):
+    """
+    B.2 Orphan check: deploy-service startup'ta bu endpoint'i cagirir.
+    Docker socket builder-service'te oldugu icin kontrol buradan yapilir.
+    Donus: {"running": true/false}
+    """
+    if not container_name:
+        raise HTTPException(status_code=400, detail="container_name gerekli")
+    try:
+        result = await asyncio.to_thread(
+            subprocess.run,
+            ["docker", "ps", "-q", "-f", f"name={container_name}"],
+            capture_output=True, text=True, timeout=10
+        )
+        running = bool(result.stdout.strip())
+    except subprocess.TimeoutExpired:
+        service_logger.warning(f"[container-status] docker ps timeout: {container_name}")
+        raise HTTPException(status_code=504, detail="docker ps timeout")
+    service_logger.info(f"[container-status] {container_name} -> running={running}")
+    return {"running": running, "container_name": container_name}

@@ -278,7 +278,7 @@ services:
     image: ngrok/ngrok:latest
     environment:
       - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
-    command: http --domain=${NGROK_DOMAIN} paas_github:8002 --log=stdout
+    command: http --domain=${NGROK_DOMAIN} github-service:8002 --log=stdout
     networks:
       - paas-net
     ports:

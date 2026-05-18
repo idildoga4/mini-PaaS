@@ -62,6 +62,10 @@ def _migrate(conn):
         c.execute("ALTER TABLE deployments ADD COLUMN container_name TEXT")
         print("[DB migration] deployments.container_name kolonu eklendi")
 
+    if "error_message" not in existing_cols:
+        c.execute("ALTER TABLE deployments ADD COLUMN error_message TEXT")
+        print("[DB migration] deployments.error_message kolonu eklendi")
+
     conn.commit()
 
 

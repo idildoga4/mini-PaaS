@@ -1,3 +1,5 @@
+# Auth Service
+
 import uuid
 import contextvars
 import logging

@@ -1,3 +1,5 @@
+# Deploy Service
+
 import uuid
 import contextvars
 import logging
@@ -9,7 +11,7 @@ from pydantic import BaseModel
 from datetime import datetime
 from jose import JWTError, jwt          # FAZ 4 A.3 — local doğrulama
 import requests as http_requests
-import httpx, re, os, asyncio, subprocess
+import httpx, re, os, asyncio
 from secrets_helper import get_secret   # FAZ 4 A.3
 
 # --- LOGGING & TRACE ID KURULUMU ---
@@ -71,25 +73,49 @@ async def orphan_container_check():
     ).fetchall()
 
     for row in rows:
-        deployment_id = row["id"]
+        deployment_id  = row["id"]
         container_name = row["container_name"]
 
-        print(f"[startup-check] Kontrol ediliyor: {container_name}")
-
-        result = subprocess.run(
-            ["docker", "ps", "-q", "-f", f"name={container_name}"],
-            capture_output=True,
-            text=True
-        )
-
-        # Container yoksa deployment FAILED yap
-        if not result.stdout.strip():
-            print(f"[startup-check] Container bulunamadı: {container_name}")
-
+        # Faz 4 A.2 oncesi kayitlarda container_name NULL olabilir.
+        # NULL ise docker ps --filter name= tum container'lari dondurur -> yanlis pozitif.
+        if not container_name:
+            print(f"[startup-check] container_name NULL, deployment {deployment_id} Failed yapiliyor")
             conn.execute(
                 """
                 UPDATE deployments
-                SET status='Failed'
+                SET status='Failed', error_message='container_name bilinmiyor (eski kayit)'
+                WHERE id=?
+                """,
+                (deployment_id,)
+            )
+            continue
+
+        print(f"[startup-check] Kontrol ediliyor: {container_name}")
+
+        # B.2 Secenek 2: docker komutu deploy-service'te yok.
+        # Builder-service'e GET /container-status istegi atarak kontrol ediyoruz.
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(
+                    f"{BUILDER_SERVICE_URL}/container-status",
+                    params={"container_name": container_name}
+                )
+            if resp.status_code == 200:
+                container_running = resp.json().get("running", False)
+            else:
+                print(f"[startup-check] Builder-service hata dondu ({resp.status_code}), atliyorum")
+                continue
+        except Exception as e:
+            print(f"[startup-check] Builder-service'e ulasilamadi: {e}, atliyorum")
+            continue
+
+        if not container_running:
+            print(f"[startup-check] Container bulunamadi: {container_name}")
+            conn.execute(
+                """
+                UPDATE deployments
+                SET status='Failed',
+                    error_message='Container not found after restart'
                 WHERE id=?
                 """,
                 (deployment_id,)
@@ -98,7 +124,7 @@ async def orphan_container_check():
     conn.commit()
     conn.close()
 
-    print("[startup-check] Tamamlandı")
+    print("[startup-check] Tamamlandi")
 
 # ─── Models ───────────────────────────────────────────────────
 class ProjectRequest(BaseModel):
