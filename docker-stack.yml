@@ -44,9 +44,9 @@ services:
         constraints:
           - node.role == manager
       restart_policy:
-        condition: on-failure
+        condition: any
         delay: 5s
-        max_attempts: 3
+        max_attempts: 10
       update_config:
         parallelism: 1
         delay: 10s
@@ -277,8 +277,9 @@ services:
   ngrok:
     image: ngrok/ngrok:latest
     environment:
-      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
-    command: http --domain=${NGROK_DOMAIN} github-service:8002 --log=stdout
+      - NGROK_AUTHTOKEN=3DSEH3EIPUyhhN5wdOr3v9ToGq8_2gkosq4GRkQ7qWj1vRBCq
+      - NGROK_DOMAIN=capture-glove-matcher.ngrok-free.dev
+    command: http --url=capture-glove-matcher.ngrok-free.dev github-service:8002 --log=stdout
     networks:
       - paas-net
     ports:
