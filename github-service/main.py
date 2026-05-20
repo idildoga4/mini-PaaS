@@ -14,6 +14,8 @@ from jose import JWTError, jwt           # FAZ 4 A.3 — local doğrulama
 import hashlib, hmac, httpx, os
 from secrets_helper import get_secret
 from database import init_db, get_connection
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+from fastapi.responses import Response
 
 trace_id_var = contextvars.ContextVar("trace_id", default='no-trace')
 
@@ -217,6 +219,11 @@ async def register_repo(request: Request, email: str = Depends(verify_token)):
     conn.commit()
     conn.close()
     return {"message": "Repo mapping kaydedildi"}
+
+# FAZ 5 B: Prometheus metrics endpoint
+@app.get('/metrics', include_in_schema=False)
+async def metrics():
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 @app.get("/health")
 async def health():

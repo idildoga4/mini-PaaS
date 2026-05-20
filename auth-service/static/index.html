@@ -75,8 +75,8 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);-webkit-font
 .home-feat-d{font-size:11.5px;color:var(--text-2);line-height:1.6}
 
 /* ── AUTH ─────────────────────────────────────────────────── */
-.auth-wrap{width:100%;max-width:356px;padding:20px}
-.auth-card{background:var(--bg-1);border:1px solid var(--border-md);border-radius:var(--r-lg);padding:26px;box-shadow:0 20px 60px rgba(0,0,0,.8)}
+.auth-wrap{width:100%;max-width:356px;padding:20px;display:flex;align-items:center;justify-content:center;min-height:100vh}
+.auth-card{background:var(--bg-1);border:1px solid var(--border-md);border-radius:var(--r-lg);padding:26px;box-shadow:0 20px 60px rgba(0,0,0,.8);max-width:420px;width:100%;margin:0 auto}
 .auth-hd{text-align:center;margin-bottom:20px}
 .auth-logo{width:34px;height:34px;background:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 10px}
 .auth-logo svg{width:15px;height:15px}
@@ -243,6 +243,12 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);-webkit-font
 .toast.success{border-color:rgba(0,201,80,.2)}.toast.error{border-color:rgba(243,18,96,.2)}
 @keyframes sIn{from{opacity:0;transform:translateX(10px)}to{opacity:1;transform:translateX(0)}}
 @keyframes sOut{from{opacity:1}to{opacity:0;transform:translateX(10px)}}
+@media(max-width:480px){.auth-wrap{padding:1rem}.auth-card{padding:1.25rem}}
+.card-menu{position:absolute;right:0;top:100%;background:var(--bg-2);border:1px solid var(--border-md);border-radius:8px;min-width:140px;z-index:100;box-shadow:0 8px 24px rgba(0,0,0,.5);overflow:hidden}
+.card-menu-item{padding:8px 14px;font-size:12px;color:var(--text-2);cursor:pointer;transition:background .12s}
+.card-menu-item:hover{background:var(--bg-3);color:var(--text)}
+.card-menu-danger{color:#f31260!important}
+.card-menu-danger:hover{background:rgba(243,18,96,.1)!important}
 </style>
 </head>
 <body>
@@ -276,9 +282,9 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);-webkit-font
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
       Logs
     </div>
-    <div class="sb-nav-item" id="nav-settings">
+    <div class="sb-nav-item" id="nav-settings" onclick="navigate('settings')">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
-      Settings <span class="soon">Yakında</span>
+      Settings
     </div>
   </nav>
 
@@ -444,8 +450,77 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);-webkit-font
 </div>
 
   <!-- SETTINGS -->
-  <div id="page-settings" class="page" style="align-items:center;justify-content:center">
-    <div class="coming-soon"><div class="coming-soon-ico">⚙️</div><div class="coming-soon-t">Settings</div><div class="coming-soon-s">Yakında eklenecek</div></div>
+  <div id="page-settings" class="page" style="flex-direction:column;overflow-y:auto">
+    <div class="topbar">
+      <span class="topbar-title">Settings</span>
+    </div>
+    <div class="filter-bar">
+      <select class="filter-select" id="settings-proj-select" onchange="onSettingsProjChange()">
+        <option value="">Proje seçin...</option>
+      </select>
+    </div>
+    <div style="max-width:640px;width:100%;padding:24px;margin:0 auto;display:flex;flex-direction:column;gap:20px">
+
+      <!-- General -->
+      <div style="background:var(--bg-1);border:1px solid var(--border-md);border-radius:var(--r-lg);overflow:hidden">
+        <div style="padding:16px 20px;border-bottom:1px solid var(--border)">
+          <div style="font-size:13px;font-weight:500;color:var(--text)">General</div>
+          <div style="font-size:11.5px;color:var(--text-3);margin-top:2px">Proje adı ve GitHub URL ayarları</div>
+        </div>
+        <div style="padding:20px;display:flex;flex-direction:column;gap:14px">
+          <div class="field"><label class="label">Proje Adı</label><input class="inp" id="st-proj-name" placeholder="proje-adi"></div>
+          <div class="field"><label class="label">GitHub URL</label><input class="inp" id="st-github-url" placeholder="https://github.com/kullanici/repo"></div>
+          <button class="btn btn-white" onclick="saveGeneralSettings()" style="align-self:flex-start">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+            Kaydet
+          </button>
+        </div>
+      </div>
+
+      <!-- Git -->
+      <div style="background:var(--bg-1);border:1px solid var(--border-md);border-radius:var(--r-lg);overflow:hidden">
+        <div style="padding:16px 20px;border-bottom:1px solid var(--border)">
+          <div style="font-size:13px;font-weight:500;color:var(--text)">Git</div>
+          <div style="font-size:11.5px;color:var(--text-3);margin-top:2px">GitHub hesap bağlantısı</div>
+        </div>
+        <div style="padding:20px" id="st-git-section">
+          <div id="st-gh-connected" style="display:none">
+            <div style="display:flex;align-items:center;justify-content:space-between">
+              <div>
+                <div style="font-size:12.5px;font-weight:500;color:var(--text)">Bağlı</div>
+                <div style="font-size:11.5px;color:var(--text-3);margin-top:2px" id="st-gh-email"></div>
+              </div>
+              <button class="btn" style="background:transparent;border:1px solid var(--border-md);color:var(--text-2);font-size:11.5px" onclick="disconnectGitHub()">Bağlantıyı Kes</button>
+            </div>
+          </div>
+          <div id="st-gh-disconnected" style="display:none">
+            <div style="display:flex;align-items:center;justify-content:space-between">
+              <div style="font-size:12.5px;color:var(--text-3)">GitHub bağlı değil</div>
+              <button class="btn btn-white" onclick="connectGitHub()">GitHub Bağla</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Danger Zone -->
+      <div style="background:var(--bg-1);border:1px solid rgba(243,18,96,.3);border-radius:var(--r-lg);overflow:hidden">
+        <div style="padding:16px 20px;border-bottom:1px solid rgba(243,18,96,.15)">
+          <div style="font-size:13px;font-weight:500;color:#f31260">Danger Zone</div>
+          <div style="font-size:11.5px;color:var(--text-3);margin-top:2px">Bu işlemler geri alınamaz</div>
+        </div>
+        <div style="padding:20px;display:flex;align-items:center;justify-content:space-between">
+          <div>
+            <div style="font-size:12.5px;font-weight:500;color:var(--text)">Bu Projeyi Sil</div>
+            <div style="font-size:11.5px;color:var(--text-3);margin-top:2px">Proje ve tüm deployment'lar kalıcı olarak silinir</div>
+          </div>
+          <button class="btn" onclick="deleteProjectFromSettings()"
+            style="background:transparent;border:1px solid #f31260;color:#f31260;font-size:12px">
+            Projeyi Sil
+          </button>
+        </div>
+      </div>
+
+    </div>
   </div>
 
 </main>
@@ -481,7 +556,9 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);-webkit-font
 <div class="toasts" id="toasts"></div>
 
 <script>
-let token = localStorage.getItem('paas_token') || null
+let token = localStorage.getItem('paas_token')
+let settingsProject = null
+let githubConnected = false || null
 let me = localStorage.getItem('paas_email') || null
 let curTab = 'login'
 let rows = []        // deployments
@@ -542,6 +619,7 @@ function showPage(p) {
 function navigate(p) {
   showPage(p)
   if (p === 'logs') updateLogsFilterSelect()
+  if (p === 'settings') loadSettingsPage()
 }
 function goHome() { token ? showPage('projects') : showPage('home') }
 function showAuth(t) { switchTab(t); showPage('auth') }
@@ -623,9 +701,13 @@ function renderProjects() {
       <div class="proj-card-repo">${repo}</div>
       <div class="proj-card-footer">
         <span class="proj-card-meta">${dt} · ${projRows.length} deploy</span>
-        <div class="proj-card-actions" onclick="event.stopPropagation()">
-          <button class="act-btn act-redeploy" onclick="redeployProject('${p.project_name}')" title="Redeploy">↺</button>
-          <button class="act-btn act-del" onclick="openDeleteModal('${p.project_name}','project')" title="Projeyi sil">🗑</button>
+        <div class="proj-card-actions" onclick="event.stopPropagation()" style="position:relative">
+          <button class="act-btn" onclick="toggleCardMenu(event,'menu-${p.project_name}')" title="Seçenekler" style="font-size:16px;letter-spacing:1px">···</button>
+          <div id="menu-${p.project_name}" class="card-menu" style="display:none">
+            <div class="card-menu-item" onclick="redeployProject('${p.project_name}')">↺ Redeploy</div>
+            <div class="card-menu-item" onclick="openSettingsByName('${p.project_name}')">⚙ Ayarlar</div>
+            <div class="card-menu-item card-menu-danger" onclick="openDeleteModal('${p.project_name}','project')">🗑 Sil</div>
+          </div>
         </div>
       </div>
     </div>`
@@ -760,6 +842,131 @@ function setUser(u) {
   document.querySelector('.sidebar').classList.remove('hidden')
   checkGithubStatus(); startAutoRefresh()
 }
+
+// ── Settings ───────────────────────────────────────────────
+function loadSettingsPage() {
+  // Proje seçicisini doldur
+  const sel = document.getElementById('settings-proj-select')
+  if (sel) {
+    const cur = settingsProject ? settingsProject.project_name : ''
+    sel.innerHTML = '<option value="">Proje seçin...</option>' +
+      projects.map(p => `<option value="${p.project_name}" ${p.project_name===cur?'selected':''}>${p.project_name}</option>`).join('')
+    // settingsProject yoksa select'te seçili proje varsa onu al
+    if (!settingsProject && sel.value) {
+      settingsProject = projects.find(p => p.project_name === sel.value) || null
+    }
+  }
+  const proj = settingsProject
+  if (!proj) {
+    document.getElementById('st-proj-name').value = ''
+    document.getElementById('st-github-url').value = ''
+    document.getElementById('st-gh-connected').style.display = 'none'
+    document.getElementById('st-gh-disconnected').style.display = 'none'
+    return
+  }
+  settingsProject = proj
+  document.getElementById('st-proj-name').value = proj.project_name
+  document.getElementById('st-github-url').value = proj.github_url || ''
+  // GitHub bağlantı durumu
+  const ghConn = document.getElementById('st-gh-connected')
+  const ghDisc = document.getElementById('st-gh-disconnected')
+  const ghEmail = document.getElementById('st-gh-email')
+  if (githubConnected) {
+    ghConn.style.display = 'block'; ghDisc.style.display = 'none'
+    ghEmail.textContent = me || ''
+  } else {
+    ghConn.style.display = 'none'; ghDisc.style.display = 'block'
+  }
+}
+
+function toggleCardMenu(e, menuId) {
+  e.stopPropagation()
+  // Diğer açık menüleri kapat
+  document.querySelectorAll('.card-menu').forEach(m => {
+    if (m.id !== menuId) m.style.display = 'none'
+  })
+  const menu = document.getElementById(menuId)
+  if (menu) menu.style.display = menu.style.display === 'none' ? 'block' : 'none'
+}
+// Herhangi bir yere tıklanınca menüleri kapat
+document.addEventListener('click', () => {
+  document.querySelectorAll('.card-menu').forEach(m => m.style.display = 'none')
+})
+
+function openSettingsByName(projName) {
+  const proj = projects.find(p => p.project_name === projName)
+  if (proj) openSettings(proj)
+}
+
+function openSettings(proj) {
+  settingsProject = proj
+  navigate('settings')
+}
+
+function onSettingsProjChange() {
+  const sel = document.getElementById('settings-proj-select')
+  const projName = sel.value
+  if (!projName) { settingsProject = null; loadSettingsPage(); return }
+  const proj = projects.find(p => p.project_name === projName)
+  if (proj) {
+    settingsProject = proj
+    // Alanları hemen doldur
+    document.getElementById('st-proj-name').value = proj.project_name
+    document.getElementById('st-github-url').value = proj.github_url || ''
+    const ghConn = document.getElementById('st-gh-connected')
+    const ghDisc = document.getElementById('st-gh-disconnected')
+    const ghEmail = document.getElementById('st-gh-email')
+    if (githubConnected) {
+      ghConn.style.display = 'block'; ghDisc.style.display = 'none'
+      ghEmail.textContent = me || ''
+    } else {
+      ghConn.style.display = 'none'; ghDisc.style.display = 'block'
+    }
+  }
+}
+
+async function saveGeneralSettings() {
+  if (!settingsProject) return
+  const name = document.getElementById('st-proj-name').value.trim()
+  const url  = document.getElementById('st-github-url').value.trim()
+  if (!name || !url) { toast('error', 'Ad ve URL zorunlu'); return }
+  try {
+    const r = await af(`http://localhost:8090/api/projects/${settingsProject.project_name}`, {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({project_name: name, github_url: url})
+    })
+    if (r.ok) {
+      toast('success', 'Ayarlar kaydedildi')
+      await loadData()
+      settingsProject = projects.find(p => p.project_name === name) || settingsProject
+      loadSettingsPage()
+    } else {
+      const d = await r.json()
+      toast('error', d.detail || 'Kaydetme başarısız')
+    }
+  } catch { toast('error', 'Sunucuya bağlanılamadı') }
+}
+
+async function deleteProjectFromSettings() {
+  if (!settingsProject) return
+  const projName = settingsProject.project_name
+  const input = prompt(`Bu işlemi geri alamazsınız.\nOnaylamak için proje adını girin: ${projName}`)
+  if (input !== projName) { if (input !== null) toast('error', 'Proje adı eşleşmiyor'); return }
+  try {
+    const r = await af(`http://localhost:8090/api/projects/${projName}`, { method: 'DELETE' })
+    if (r.ok) {
+      toast('success', 'Proje silindi')
+      settingsProject = null
+      await loadData()
+      navigate('projects')
+    } else {
+      const d = await r.json()
+      toast('error', d.detail || 'Silme başarısız')
+    }
+  } catch { toast('error', 'Sunucuya bağlanılamadı') }
+}
+
 function logout() {
   stopAutoRefresh(); clearToken(); rows=[]; projects=[]
   document.getElementById('sb-user').style.display='none'
@@ -1003,6 +1210,7 @@ async function checkGithubStatus() {
   try {
     const r=await af('http://localhost:8090/api/github/status'); if (!r.ok) return
     const data=await r.json(), connected=data&&data.connected
+    githubConnected = !!connected
     document.getElementById('sb-gh-connect').style.display=connected?'none':'flex'
     document.getElementById('sb-gh-connected').style.display=connected?'flex':'none'
   } catch {}

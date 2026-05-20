@@ -13,6 +13,7 @@ from jose import JWTError, jwt          # FAZ 4 A.3 — local doğrulama
 import requests as http_requests
 import httpx, re, os, asyncio
 from secrets_helper import get_secret   # FAZ 4 A.3
+from prometheus_client import Counter, Histogram, make_asgi_app
 
 # --- LOGGING & TRACE ID KURULUMU ---
 trace_id_var = contextvars.ContextVar("trace_id", default='no-trace')
@@ -40,6 +41,9 @@ SECRET_KEY = get_secret("jwt_secret", "JWT_SECRET")
 ALGORITHM  = "HS256"
 
 bearer = HTTPBearer()
+deploy_total = Counter('deploy_total', 'Deploy sayisi', ['status'])
+build_duration = Histogram('build_duration_seconds', 'Build suresi')
+
 app = FastAPI(title="Deploy Service")
 
 os.makedirs("data", exist_ok=True)
@@ -201,6 +205,7 @@ async def get_github_token(email: str) -> str:
 # FAZ 4 A.2: container_name parametresi eklendi
 def trigger_builder(deploy_id: int, github_url: str, project_name: str,
                     github_token: str = "", container_name: str = "", subdomain: str = ""):
+    deploy_total.labels(status='running').inc()
     try:
         r = http_requests.post(
             f"{BUILDER_SERVICE_URL}/deploy",
@@ -329,6 +334,31 @@ async def redeploy(project_name: str, bg: BackgroundTasks,
                 github_token, container_name, subdomain)
     return {"deploy_id": deploy_id, "message": "Redeploy başlatıldı"}
 
+@app.put("/api/projects/{project_name}")
+async def update_project(project_name: str, req: dict, email: str = Depends(verify_token)):
+    """FAZ 5 C.1: Settings sayfasindan proje adi ve GitHub URL guncelle."""
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT id FROM projects WHERE user_email=? AND LOWER(project_name)=LOWER(?)",
+        (email, project_name)
+    ).fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Proje bulunamadi")
+    new_name   = req.get("project_name", project_name).strip()
+    new_url    = req.get("github_url", "").strip()
+    if not new_name or not new_url:
+        conn.close()
+        raise HTTPException(status_code=422, detail="project_name ve github_url zorunlu")
+    conn.execute(
+        "UPDATE projects SET project_name=?, github_url=? WHERE id=?",
+        (new_name, new_url, row["id"])
+    )
+    conn.commit()
+    conn.close()
+    service_logger.info(f"[Deploy Service] Proje guncellendi: {project_name} -> {new_name}")
+    return {"message": "Proje guncellendi", "project_name": new_name, "github_url": new_url}
+
 @app.delete("/api/projects/{project_name}")
 async def delete_project(project_name: str, email: str = Depends(verify_token)):
     """Projeyi ve tüm deployment'larını sil."""
@@ -388,6 +418,10 @@ async def webhook(req: WebhookRequest):
     )
     conn.commit()
     conn.close()
+    if req.status == "Running":
+        deploy_total.labels(status='success').inc()
+    else:
+        deploy_total.labels(status='failed').inc()
     service_logger.info(f"[Deploy Service] Deploy #{req.deploy_id} → {req.status}")
     return {"message": "Güncellendi"}
 
@@ -550,3 +584,5 @@ async def health():
         return {"status": "ok", "service": "deploy-service"}
     except Exception as e:
         return {"status": "error", "detail": str(e)}
+# FAZ 5 B.1: Prometheus metrics endpoint
+app.mount('/metrics', make_asgi_app())

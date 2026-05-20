@@ -4,23 +4,35 @@ global:
 
 scrape_configs:
 
-  # Traefik — HTTP request sayıları, latency, router metrikleri
+  # Traefik — HTTP request sayilari, latency, router metrikleri
   - job_name: 'traefik'
     static_configs:
-      - targets: ['traefik_proxy:8080']
+      - targets: ['traefik:8080']
     metrics_path: /metrics
 
-  # API Gateway — canlılık kontrolü
-  - job_name: 'api-gateway'
+  # Deploy Service — deploy_total, build_duration
+  - job_name: 'deploy-service'
     static_configs:
-      - targets: ['paas_api:8000']
-    metrics_path: /health
+      - targets: ['deploy-service:8003']
+    metrics_path: /metrics
 
-  # Builder Service — build pipeline sağlığı
+  # Auth Service — auth_verify_duration, circuit_breaker_state
+  - job_name: 'auth-service'
+    static_configs:
+      - targets: ['auth-service:8001']
+    metrics_path: /metrics
+
+  # Builder Service — active_builds
   - job_name: 'builder-service'
     static_configs:
-      - targets: ['paas_builder:5000']
-    metrics_path: /health
+      - targets: ['builder-service:5000']
+    metrics_path: /metrics
+
+  # GitHub Service
+  - job_name: 'github-service'
+    static_configs:
+      - targets: ['github-service:8002']
+    metrics_path: /metrics
 
   # Prometheus kendini izliyor
   - job_name: 'prometheus'

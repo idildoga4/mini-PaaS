@@ -10,6 +10,7 @@ import asyncio, os, re, subprocess, requests
 
 from git_manager import clone_repo
 from docker_manager import build_and_deploy
+from prometheus_client import Gauge, make_asgi_app
 trace_id_var = contextvars.ContextVar("trace_id", default='no-trace')
 
 class TraceIdFilter(logging.Filter):
@@ -47,6 +48,7 @@ async def trace_middleware(request: Request, call_next):
 DEPLOY_SERVICE_URL = os.getenv("DEPLOY_SERVICE_URL", "http://deploy-service:8003")
 
 active_builds = {}
+active_builds_gauge = Gauge('active_builds', 'Aktif build sayisi')
 
 # ─── Models ───────────────────────────────────────────────────
 class DeployRequest(BaseModel):
@@ -142,6 +144,7 @@ async def deploy_project(req: DeployRequest, background_tasks: BackgroundTasks):
         )
     
     active_builds[normalized_project] = True
+    active_builds_gauge.inc()
 
     async def pipeline_wrapper():
         try:
@@ -159,6 +162,7 @@ async def deploy_project(req: DeployRequest, background_tasks: BackgroundTasks):
             )
         finally:
             active_builds.pop(normalized_project, None)
+            active_builds_gauge.dec()
             print(f"[builder] Build lock kaldırıldı: {normalized_project}")
 
     background_tasks.add_task(pipeline_wrapper)
@@ -243,3 +247,6 @@ async def container_status(container_name: str):
         raise HTTPException(status_code=504, detail="docker ps timeout")
     service_logger.info(f"[container-status] {container_name} -> running={running}")
     return {"running": running, "container_name": container_name}
+
+# FAZ 5 B.2: Prometheus metrics endpoint
+app.mount('/metrics', make_asgi_app())

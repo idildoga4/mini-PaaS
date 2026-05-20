@@ -32,6 +32,11 @@ http:
       - web
       rule: Host(`idildoga4-minipaastest.localhost`)
       service: idildoga4-minipaastest
+    omertank36-test1:
+      entryPoints:
+      - web
+      rule: Host(`omertank36-test1.localhost`)
+      service: omertank36-test1
     omertank36-testapp:
       entryPoints:
       - web
@@ -69,6 +74,10 @@ http:
       loadBalancer:
         servers:
         - url: http://idildoga4_minipaastest:80
+    omertank36-test1:
+      loadBalancer:
+        servers:
+        - url: http://omertank36_test1:80
     omertank36-testapp:
       loadBalancer:
         servers:
