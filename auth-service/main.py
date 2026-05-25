@@ -1,4 +1,5 @@
 # Auth Service
+# FAZ 6: StaticFiles mount kaldırıldı — dashboard artık dashboard-service tarafından serve ediliyor.
 
 import uuid
 import contextvars
@@ -7,7 +8,6 @@ from pythonjsonlogger import jsonlogger
 from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from datetime import datetime, timedelta
 from jose import JWTError, jwt
@@ -15,7 +15,8 @@ import hashlib, hmac, secrets, base64, re, os
 from typing import Optional
 from secrets_helper import get_secret
 from database import init_db, get_connection
-from prometheus_client import Histogram, Gauge, make_asgi_app
+from prometheus_client import Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST
+from fastapi.responses import Response
 
 trace_id_var = contextvars.ContextVar("trace_id", default='no-trace')
 
@@ -27,30 +28,37 @@ class TraceIdFilter(logging.Filter):
 logger = logging.getLogger()
 logger.addFilter(TraceIdFilter())
 handler = logging.StreamHandler()
-formatter = jsonlogger.JsonFormatter('%(asctime)s %(levelname)s %(name)s %(message)s %(service_name)s %(trace_id)s')
+formatter = jsonlogger.JsonFormatter(
+    '%(asctime)s %(levelname)s %(name)s %(message)s %(service_name)s %(trace_id)s'
+)
 handler.setFormatter(formatter)
 logger.addHandler(handler)
 logger.setLevel(logging.INFO)
 
 service_logger = logging.LoggerAdapter(logger, extra={"service_name": "auth-service"})
 
-SECRET_KEY = get_secret("jwt_secret", "JWT_SECRET")
+SECRET_KEY         = get_secret("jwt_secret", "JWT_SECRET")
 ALGORITHM          = "HS256"
 TOKEN_EXPIRE_HOURS = 24
 
 bearer = HTTPBearer()
 
-# FAZ 5 B.2: Prometheus metrikleri
+# Prometheus metrikleri
 auth_verify_duration = Histogram('auth_verify_duration_seconds', 'Auth dogrulama suresi')
 circuit_state        = Gauge('circuit_breaker_state', 'Circuit breaker (0=closed, 1=open)')
-circuit_state.set(0)  # Baslangicta closed
+circuit_state.set(0)
 
 app = FastAPI(title="Auth Service")
 
 os.makedirs("data", exist_ok=True)
 init_db()
 
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"]
+)
 
 @app.middleware("http")
 async def trace_middleware(request: Request, call_next):
@@ -132,10 +140,13 @@ async def register(req: RegisterRequest):
         conn.close()
         raise HTTPException(status_code=409, detail="Bu e-posta zaten kayitli")
     hashed = hash_password(req.password)
-    conn.execute("INSERT INTO users (email, password, created_at) VALUES (?,?,?)",
-                 (email, hashed, datetime.utcnow().isoformat()))
+    conn.execute(
+        "INSERT INTO users (email, password, created_at) VALUES (?,?,?)",
+        (email, hashed, datetime.utcnow().isoformat())
+    )
     conn.commit()
     conn.close()
+    service_logger.info(f"Kullanici kayit oldu: {email}")
     return {"token": create_token(email), "email": email, "message": "Kayit basarili"}
 
 @app.post("/api/login")
@@ -146,6 +157,7 @@ async def login(req: LoginRequest):
     conn.close()
     if not row or not check_password(req.password, row["password"]):
         raise HTTPException(status_code=401, detail="E-posta veya sifre hatali")
+    service_logger.info(f"Kullanici giris yapti: {email}")
     return {"token": create_token(email), "email": email, "message": "Giris basarili"}
 
 @app.get("/api/me")
@@ -155,7 +167,7 @@ async def me(email: str = Depends(verify_token)):
 @app.get("/api/auth/verify")
 @auth_verify_duration.time()
 async def verify_token_endpoint(email: str = Depends(verify_token)):
-    """Diger servisler token dogrulamak icin bu endpoint'i cagirır."""
+    """Diger servisler token dogrulamak icin bu endpoint'i cagirir."""
     return {"email": email, "valid": True}
 
 @app.get("/health")
@@ -168,15 +180,12 @@ async def health():
     except Exception as e:
         return {"status": "error", "detail": str(e)}
 
-# FAZ 5 B.2: Prometheus metrics endpoint
-# app.mount ile StaticFiles birlikte kullanilinca route onceligi sorunu cikiyor.
-# Bu nedenle /metrics icin ayri bir ASGI app degil, Response ile donuyoruz.
-from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
-from fastapi.responses import Response
-
 @app.get('/metrics', include_in_schema=False)
 async def metrics():
+    # StaticFiles olmadığı için artık app.mount çakışması yok.
+    # generate_latest() + Response pattern korundu (Faz 5'ten).
     return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
-# Static files en sona mount edilmeli
-app.mount("/", StaticFiles(directory="static", html=True), name="static")
+# FAZ 6: app.mount("/", StaticFiles(...)) KALDIRILDI.
+# Dashboard artık dashboard-service (Nginx) tarafından serve ediliyor.
+# Bu değişiklik /metrics 404 sorununu da kalıcı olarak çözüyor.

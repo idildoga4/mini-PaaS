@@ -1,0 +1,1243 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mini PaaS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#0a0a0a;--bg-1:#111;--bg-2:#161616;--bg-3:#1e1e1e;--bg-4:#252525;
+  --border:rgba(255,255,255,.06);--border-md:rgba(255,255,255,.1);--border-lg:rgba(255,255,255,.16);
+  --text:#ededed;--text-2:#a1a1a1;--text-3:#555;--text-4:#2e2e2e;
+  --blue:#0070f3;--blue-2:#338ef7;--green:#00c950;--red:#f31260;--amber:#f5a524;
+  --mono:'Geist Mono',monospace;--sans:'DM Sans',sans-serif;
+  --r:8px;--r-lg:12px;--sidebar:220px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;width:100%;overflow:hidden}
+body{font-family:var(--sans);background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased}
+
+/* ── LAYOUT ───────────────────────────────────────────────── */
+.app{display:flex;width:100%;height:100vh}
+
+/* ── SIDEBAR ──────────────────────────────────────────────── */
+.sidebar{width:var(--sidebar);flex-shrink:0;background:var(--bg-1);border-right:1px solid var(--border);display:flex;flex-direction:column;height:100vh}
+.sb-brand{padding:14px 12px 12px;border-bottom:1px solid var(--border)}
+.sb-logo{display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:var(--r);cursor:pointer;user-select:none;margin-bottom:10px}
+.sb-logo:hover{background:var(--bg-3)}
+.logo-mark{width:22px;height:22px;background:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.logo-mark svg{width:10px;height:10px}
+.sb-logo-text{font-size:13px;font-weight:600;letter-spacing:-.3px}
+.sb-user{display:flex;align-items:center;gap:7px;padding:6px 8px;border-radius:var(--r);background:var(--bg-3);border:1px solid var(--border)}
+.sb-user-dot{width:6px;height:6px;background:var(--green);border-radius:50%;flex-shrink:0}
+.sb-user-email{font-size:11.5px;color:var(--text-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.sb-nav{flex:1;overflow-y:auto;padding:8px}
+.sb-nav-label{font-size:10px;font-weight:500;color:var(--text-3);text-transform:uppercase;letter-spacing:.7px;padding:6px 8px 4px}
+.sb-nav-item{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:var(--r);cursor:pointer;font-size:12.5px;color:var(--text-2);transition:all .12s;margin-bottom:1px;user-select:none}
+.sb-nav-item:hover{background:var(--bg-3);color:var(--text)}
+.sb-nav-item.active{background:var(--bg-3);color:var(--text);border:1px solid var(--border-md)}
+.sb-nav-item svg{flex-shrink:0;opacity:.6}
+.sb-nav-item.active svg{opacity:1}
+.sb-nav-item .soon{font-size:9px;padding:1px 5px;background:var(--bg-4);border:1px solid var(--border);border-radius:100px;color:var(--text-3);margin-left:auto}
+.sb-bottom{border-top:1px solid var(--border);padding:8px}
+.sb-bottom-item{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:var(--r);cursor:pointer;font-size:12px;color:var(--text-2);transition:background .12s}
+.sb-bottom-item:hover{background:var(--bg-3);color:var(--text)}
+.sidebar.hidden { display: none; }
+
+/* ── MAIN ─────────────────────────────────────────────────── */
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
+.page{display:none;flex:1;flex-direction:column;overflow:hidden;min-height:0}
+.page.active{display:flex}
+#page-home{overflow-y:auto}
+#page-auth{align-items:center;justify-content:center;overflow-y:auto}
+
+/* ── TOPBAR ───────────────────────────────────────────────── */
+.topbar{height:48px;border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 24px;gap:8px;flex-shrink:0;background:var(--bg-1)}
+.topbar-title{font-size:13.5px;font-weight:500}
+.topbar-sep{color:var(--text-4);font-size:18px;font-weight:300}
+.topbar-sub{font-size:13px;color:var(--text-2)}
+.topbar-actions{margin-left:auto;display:flex;align-items:center;gap:6px}
+.scroll-area{flex:1;overflow-y:auto}
+
+/* ── HOME ─────────────────────────────────────────────────── */
+.home-hero{padding:80px 40px 50px;max-width:620px;margin:0 auto;text-align:center}
+.home-badge{display:inline-flex;align-items:center;gap:6px;padding:4px 12px;background:var(--bg-2);border:1px solid var(--border-md);border-radius:100px;font-size:11px;color:var(--text-2);margin-bottom:24px}
+.home-badge-dot{width:5px;height:5px;background:var(--blue-2);border-radius:50%;animation:blink 2.5s ease-in-out infinite}
+.home-h1{font-size:clamp(34px,5vw,54px);font-weight:600;line-height:1.08;letter-spacing:-2px;margin-bottom:16px;background:linear-gradient(150deg,#fff 40%,#444 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.home-sub{font-size:15px;color:var(--text-2);max-width:400px;margin:0 auto 28px;line-height:1.65}
+.home-cta{display:flex;gap:10px;justify-content:center}
+.home-feats{max-width:720px;margin:0 auto;padding:0 40px 60px;display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border);border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden}
+.home-feat{background:var(--bg-1);padding:20px;transition:background .2s}.home-feat:hover{background:var(--bg-2)}
+.home-feat-ico{font-size:18px;margin-bottom:10px}
+.home-feat-t{font-size:13px;font-weight:600;margin-bottom:5px}
+.home-feat-d{font-size:11.5px;color:var(--text-2);line-height:1.6}
+
+/* ── AUTH ─────────────────────────────────────────────────── */
+.auth-wrap{width:100%;max-width:356px;padding:20px;display:flex;align-items:center;justify-content:center;min-height:100vh}
+.auth-card{background:var(--bg-1);border:1px solid var(--border-md);border-radius:var(--r-lg);padding:26px;box-shadow:0 20px 60px rgba(0,0,0,.8);max-width:420px;width:100%;margin:0 auto}
+.auth-hd{text-align:center;margin-bottom:20px}
+.auth-logo{width:34px;height:34px;background:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 10px}
+.auth-logo svg{width:15px;height:15px}
+.auth-title{font-size:16px;font-weight:600;letter-spacing:-.4px;margin-bottom:3px}
+.auth-dsub{font-size:11.5px;color:var(--text-2)}
+.tabs{display:flex;background:var(--bg-3);border:1px solid var(--border);border-radius:6px;padding:3px;margin-bottom:16px}
+.tab{flex:1;height:26px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:500;border-radius:4px;cursor:pointer;color:var(--text-3);transition:all .15s;user-select:none}
+.tab.active{background:var(--bg-2);border:1px solid var(--border-md);color:var(--text)}
+.auth-form{display:flex;flex-direction:column;gap:11px}
+.aerr{display:none;padding:8px 10px;background:rgba(243,18,96,.07);border:1px solid rgba(243,18,96,.18);border-radius:6px;font-size:11.5px;color:#ff6b9d;line-height:1.5}
+.aerr.on{display:block}
+.auth-ft{margin-top:12px;text-align:center;font-size:11.5px;color:var(--text-3)}
+.auth-ft a{color:var(--text-2);cursor:pointer}.auth-ft a:hover{color:var(--text)}
+.str-bar{height:2px;background:var(--bg-3);border-radius:100px;overflow:hidden;margin-top:-4px}
+.str-fill{height:100%;border-radius:100px;transition:width .3s,background .3s;width:0}
+.str-hint{font-size:10.5px;color:var(--text-3);margin-top:-4px;min-height:13px}
+.pw-wrap{position:relative}
+.pw-wrap .inp{padding-right:34px}
+.pw-toggle{position:absolute;right:9px;top:50%;transform:translateY(-50%);background:transparent;border:none;cursor:pointer;color:var(--text-3);font-size:13px;padding:0;line-height:1}
+
+/* ── PROJECTS ─────────────────────────────────────────────── */
+.new-project-bar{padding:16px 24px;border-bottom:1px solid var(--border);background:var(--bg-1);flex-shrink:0}
+.new-project-title{font-size:10.5px;font-weight:500;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px}
+.new-project-row{display:flex;gap:8px;align-items:flex-end}
+.new-project-row .field{flex:1}
+.new-project-row .field:first-child{max-width:170px}
+.projects-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;padding:24px}
+.proj-card{background:var(--bg-1);border:1px solid var(--border-md);border-radius:var(--r-lg);padding:18px;cursor:pointer;transition:all .15s}
+.proj-card:hover{background:var(--bg-2);border-color:var(--border-lg);transform:translateY(-1px)}
+.proj-card-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.proj-card-icon{width:32px;height:32px;background:var(--bg-3);border:1px solid var(--border-md);border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:12px;font-family:var(--mono);font-weight:500;color:var(--text-2)}
+.proj-card-status{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text-2)}
+.proj-card-dot{width:6px;height:6px;border-radius:50%}
+.proj-card-dot.running{background:var(--green);animation:blink 2s infinite}
+.proj-card-dot.failed{background:var(--red)}
+.proj-card-dot.stopped{background:var(--text-3)}
+.proj-card-dot.pending,.proj-card-dot.building{background:var(--amber);animation:blink 1.2s infinite}
+.proj-card-name{font-size:14px;font-weight:600;margin-bottom:4px;letter-spacing:-.2px}
+.proj-card-repo{font-size:11px;color:var(--text-2);font-family:var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:12px}
+.proj-card-footer{display:flex;align-items:center;justify-content:space-between;padding-top:10px;border-top:1px solid var(--border)}
+.proj-card-meta{font-size:10.5px;color:var(--text-3)}
+.proj-card-actions{display:flex;gap:4px}
+
+/* ── DEPLOYMENTS ──────────────────────────────────────────── */
+.filter-bar{display:flex;align-items:center;gap:8px;padding:12px 24px;border-bottom:1px solid var(--border);background:var(--bg-1);flex-shrink:0}
+.filter-select{height:30px;padding:0 10px;background:var(--bg-2);border:1px solid var(--border-md);border-radius:6px;color:var(--text-2);font-family:var(--sans);font-size:12px;outline:none;cursor:pointer;min-width:150px}
+.filter-select option{background:var(--bg-2)}
+.kpi-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border);border-bottom:1px solid var(--border);flex-shrink:0}
+.kpi-item{background:var(--bg-1);padding:12px 20px}
+.kpi-label{font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.7px;font-family:var(--mono);margin-bottom:5px}
+.kpi-value{font-size:20px;font-weight:600;letter-spacing:-1px;font-family:var(--mono)}
+.kpi-value.g{color:var(--green)}.kpi-value.r{color:var(--red)}.kpi-value.a{color:var(--amber)}
+.tbl-wrap{padding:16px 24px 24px}
+.tbl-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.tbl-title{font-size:12px;font-weight:500;color:var(--text-2);display:flex;align-items:center;gap:6px}
+.cnt-badge{padding:1px 6px;background:var(--bg-3);border:1px solid var(--border);border-radius:100px;font-size:10px;color:var(--text-3);font-family:var(--mono)}
+.tbl{background:var(--bg-1);border:1px solid var(--border-md);border-radius:var(--r-lg);overflow:hidden}
+.tbl-head{display:grid;grid-template-columns:40px 130px 1fr 110px 84px 170px;padding:8px 16px;background:var(--bg-2);border-bottom:1px solid var(--border);font-size:10px;font-weight:500;color:var(--text-3);text-transform:uppercase;letter-spacing:.6px;font-family:var(--mono)}
+.tbl-row{display:grid;grid-template-columns:40px 130px 1fr 110px 84px 170px;padding:0 16px;height:48px;align-items:center;border-bottom:1px solid var(--border);transition:background .12s;font-size:12px}
+.tbl-row:last-child{border-bottom:none}
+.tbl-row:hover{background:rgba(255,255,255,.02)}
+.tr-id{font-family:var(--mono);font-size:10px;color:var(--text-3)}
+.tr-name{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:8px}
+.tr-url{font-size:10.5px;color:var(--text-2);font-family:var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:8px}
+.tr-time{font-size:10px;color:var(--text-3);font-family:var(--mono)}
+.tr-actions{display:flex;align-items:center;gap:4px}
+.act-btn{display:inline-flex;align-items:center;gap:3px;height:24px;padding:0 8px;border-radius:5px;font-size:11px;font-weight:500;cursor:pointer;border:none;transition:all .15s;font-family:var(--sans)}
+.act-open{background:rgba(51,142,247,.1);color:var(--blue-2);border:1px solid rgba(51,142,247,.2)}.act-open:hover{background:rgba(51,142,247,.18)}
+.act-redeploy{background:rgba(0,201,80,.08);color:var(--green);border:1px solid rgba(0,201,80,.2)}.act-redeploy:hover{background:rgba(0,201,80,.15)}
+.act-log{background:rgba(245,165,36,.08);color:var(--amber);border:1px solid rgba(245,165,36,.2)}.act-log:hover{background:rgba(245,165,36,.15)}
+.act-stop{background:rgba(243,18,96,.08);color:var(--red);border:1px solid rgba(243,18,96,.2)}.act-stop:hover{background:rgba(243,18,96,.15)}
+.act-del{background:transparent;color:var(--text-3);border:1px solid transparent;padding:0 5px}.act-del:hover{background:rgba(243,18,96,.08);color:var(--red);border-color:rgba(243,18,96,.2)}
+.chip{display:inline-flex;align-items:center;gap:4px;padding:2px 7px;border-radius:100px;font-size:10px;font-weight:500;font-family:var(--mono)}
+.chip-d{width:4px;height:4px;border-radius:50%;flex-shrink:0}
+.chip.running{background:rgba(0,201,80,.09);color:var(--green);border:1px solid rgba(0,201,80,.18)}.chip.running .chip-d{background:var(--green);animation:blink 2s infinite}
+.chip.pending,.chip.building{background:rgba(245,165,36,.09);color:var(--amber);border:1px solid rgba(245,165,36,.18)}.chip.pending .chip-d,.chip.building .chip-d{background:var(--amber);animation:blink 1.2s infinite}
+.chip.failed{background:rgba(243,18,96,.07);color:var(--red);border:1px solid rgba(243,18,96,.18)}.chip.failed .chip-d{background:var(--red)}
+.chip.stopped{background:var(--bg-3);color:var(--text-3);border:1px solid var(--border-md)}.chip.stopped .chip-d{background:var(--text-4)}
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px 20px;gap:8px}
+.empty-ic{width:36px;height:36px;border:1px solid var(--border-md);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;background:var(--bg-2);margin-bottom:4px}
+.empty-t{font-size:13px;font-weight:500}.empty-s{font-size:11.5px;color:var(--text-3);text-align:center;max-width:220px;line-height:1.55}
+
+/* ── LOGS ─────────────────────────────────────────────────── */
+.logs-toolbar{display:flex;align-items:center;gap:8px;padding:12px 24px;border-bottom:1px solid var(--border);background:var(--bg-1);flex-shrink:0}
+.logs-body{flex:1;overflow-y:auto;padding:16px 24px;font-family:var(--mono);font-size:11.5px;line-height:1.9}
+.log-line{display:flex;align-items:baseline;gap:10px;padding:2px 0;border-bottom:1px solid rgba(255,255,255,.02)}
+.log-line:hover{background:rgba(255,255,255,.02)}
+.log-time{color:var(--text-3);font-size:10px;flex-shrink:0;width:65px}
+.log-level{font-size:9.5px;font-weight:600;width:36px;flex-shrink:0;text-transform:uppercase}
+.log-level.ok{color:var(--green)}
+.log-level.er{color:var(--red)}
+.log-level.warn{color:var(--amber)}
+.log-level.inf{color:var(--blue-2)}
+.log-msg{color:var(--text-2);word-break:break-all}
+.log-msg.ok{color:var(--green)}
+.log-msg.er{color:var(--red)}
+.log-msg.warn{color:var(--amber)}
+.log-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:8px;color:var(--text-3)}
+.coming-soon{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:8px}
+.coming-soon-ico{font-size:26px;margin-bottom:4px}
+.coming-soon-t{font-size:13px;font-weight:500;color:var(--text-2)}
+.coming-soon-s{font-size:11.5px;color:var(--text-3)}
+
+/* ── BUTTONS ──────────────────────────────────────────────── */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:0 12px;height:30px;border-radius:6px;font-family:var(--sans);font-size:12.5px;font-weight:500;cursor:pointer;border:none;transition:all .15s;white-space:nowrap;user-select:none}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn-ghost{background:transparent;color:var(--text-2);border:1px solid transparent}.btn-ghost:hover:not(:disabled){background:var(--bg-3);border-color:var(--border);color:var(--text)}
+.btn-outline{background:transparent;color:var(--text);border:1px solid var(--border-md)}.btn-outline:hover:not(:disabled){background:var(--bg-2)}
+.btn-white{background:#fff;color:#000;font-weight:600}.btn-white:hover:not(:disabled){background:#e5e5e5}
+.btn-blue{background:var(--blue);color:#fff;font-weight:600}.btn-blue:hover:not(:disabled){background:#0060d3}
+.btn-red{background:rgba(243,18,96,.1);color:var(--red);border:1px solid rgba(243,18,96,.2)}.btn-red:hover:not(:disabled){background:rgba(243,18,96,.18)}
+.btn-lg{height:36px;padding:0 16px;font-size:13px;border-radius:8px}
+.btn-xl{height:42px;padding:0 20px;font-size:14px;border-radius:9px}
+.btn-full{width:100%}
+.spin{display:none;width:12px;height:12px;border:2px solid rgba(255,255,255,.2);border-top-color:#fff;border-radius:50%;animation:rot .6s linear infinite}
+.btn-white .spin{border-color:rgba(0,0,0,.15);border-top-color:#000}
+@keyframes rot{to{transform:rotate(360deg)}}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* ── INPUTS ───────────────────────────────────────────────── */
+.field{display:flex;flex-direction:column;gap:4px}
+.label{font-size:11px;font-weight:500;color:var(--text-2)}
+.inp{width:100%;padding:0 10px;height:32px;background:var(--bg-2);border:1px solid var(--border-md);border-radius:6px;color:var(--text);font-family:var(--sans);font-size:12.5px;outline:none;transition:border-color .15s,box-shadow .15s}
+.inp:focus{border-color:rgba(255,255,255,.24);box-shadow:0 0 0 3px rgba(255,255,255,.04)}
+.inp::placeholder{color:var(--text-4)}
+.inp.mono{font-family:var(--mono);font-size:11.5px}
+.inp.err{border-color:rgba(243,18,96,.5)}
+.hint{font-size:11px;color:var(--text-3);margin-top:6px;display:flex;align-items:center;gap:4px}
+.kbd{padding:1px 5px;background:var(--bg-3);border:1px solid var(--border-md);border-radius:3px;font-family:var(--mono);font-size:9.5px;color:var(--text-2)}
+
+/* ── DRAWER ───────────────────────────────────────────────── */
+.drawer{display:none;position:fixed;bottom:0;left:var(--sidebar);right:0;background:var(--bg-1);border-top:1px solid var(--border-md);box-shadow:0 -6px 30px rgba(0,0,0,.6);z-index:200;flex-direction:column}
+.drawer.open{display:flex;animation:slideUp .2s ease both}
+.drawer.expanded{height:460px}.drawer.normal{height:260px}
+@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+.drawer-hd{padding:9px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.drawer-title{font-size:11px;font-weight:500;font-family:var(--mono);color:var(--text-2);display:flex;align-items:center;gap:6px}
+.drawer-status{padding:1px 6px;border-radius:4px;font-size:9.5px;font-family:var(--mono)}
+.drawer-status.running{background:rgba(0,201,80,.1);color:var(--green)}
+.drawer-status.building,.drawer-status.pending{background:rgba(245,165,36,.1);color:var(--amber)}
+.drawer-status.failed{background:rgba(243,18,96,.08);color:var(--red)}
+.drawer-hd-right{display:flex;align-items:center;gap:5px}
+.drawer-expand{background:transparent;border:none;color:var(--text-3);cursor:pointer;font-size:12px;padding:2px 5px;border-radius:4px;line-height:1}.drawer-expand:hover{color:var(--text-2);background:var(--bg-3)}
+.drawer-body{flex:1;overflow-y:auto;padding:10px 14px;font-family:var(--mono);font-size:11px;line-height:1.9;color:#555}
+.drawer-body::-webkit-scrollbar{width:3px}.drawer-body::-webkit-scrollbar-thumb{background:var(--bg-4);border-radius:2px}
+.ll{display:block;padding:1px 0}
+.ll.ok{color:var(--green)}.ll.er{color:var(--red)}.ll.inf{color:var(--blue-2)}.ll.warn{color:var(--amber)}.ll.ts{color:var(--text-3);font-size:10px}
+
+/* ── MODAL ────────────────────────────────────────────────── */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);z-index:400;align-items:center;justify-content:center}
+.modal-overlay.open{display:flex;animation:fadeIn .15s ease both}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.modal{background:var(--bg-1);border:1px solid var(--border-md);border-radius:var(--r-lg);padding:22px;width:100%;max-width:320px;box-shadow:0 20px 60px rgba(0,0,0,.8);animation:scaleIn .15s ease both}
+@keyframes scaleIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}
+.modal-icon{width:36px;height:36px;background:rgba(243,18,96,.08);border:1px solid rgba(243,18,96,.18);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;margin-bottom:12px}
+.modal-title{font-size:14px;font-weight:600;margin-bottom:5px}
+.modal-desc{font-size:12px;color:var(--text-2);line-height:1.55;margin-bottom:18px}
+.modal-desc strong{color:var(--text)}
+.modal-actions{display:flex;gap:7px;justify-content:flex-end}
+
+/* ── TOASTS ───────────────────────────────────────────────── */
+.toasts{position:fixed;bottom:16px;right:16px;display:flex;flex-direction:column;gap:6px;z-index:500;pointer-events:none}
+.toast{display:flex;align-items:center;gap:8px;padding:9px 12px;background:var(--bg-2);border:1px solid var(--border-md);border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,.5);font-size:12px;min-width:220px;animation:sIn .18s ease both;pointer-events:all}
+.toast.success{border-color:rgba(0,201,80,.2)}.toast.error{border-color:rgba(243,18,96,.2)}
+@keyframes sIn{from{opacity:0;transform:translateX(10px)}to{opacity:1;transform:translateX(0)}}
+@keyframes sOut{from{opacity:1}to{opacity:0;transform:translateX(10px)}}
+@media(max-width:480px){.auth-wrap{padding:1rem}.auth-card{padding:1.25rem}}
+.card-menu{position:absolute;right:0;top:100%;background:var(--bg-2);border:1px solid var(--border-md);border-radius:8px;min-width:140px;z-index:100;box-shadow:0 8px 24px rgba(0,0,0,.5);overflow:hidden}
+.card-menu-item{padding:8px 14px;font-size:12px;color:var(--text-2);cursor:pointer;transition:background .12s}
+.card-menu-item:hover{background:var(--bg-3);color:var(--text)}
+.card-menu-danger{color:#f31260!important}
+.card-menu-danger:hover{background:rgba(243,18,96,.1)!important}
+</style>
+</head>
+<body>
+<div class="app">
+
+<!-- SIDEBAR -->
+<aside class="sidebar hidden" id="sidebar">
+  <div class="sb-brand">
+    <div class="sb-logo" onclick="goHome()">
+      <div class="logo-mark"><svg viewBox="0 0 16 16" fill="none"><path d="M8 1L15 14H1L8 1Z" fill="black"/></svg></div>
+      <span class="sb-logo-text">Mini PaaS</span>
+    </div>
+    <div class="sb-user" id="sb-user" style="display:none">
+      <div class="sb-user-dot"></div>
+      <span class="sb-user-email" id="sb-user-email"></span>
+    </div>
+  </div>
+
+  <!-- Nav sadece giriş yapıldığında göster -->
+  <nav class="sb-nav" id="sb-nav" style="display:none">
+    <div class="sb-nav-label">Genel</div>
+    <div class="sb-nav-item active" id="nav-projects" onclick="navigate('projects')">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+      Projects
+    </div>
+    <div class="sb-nav-item" id="nav-deployments" onclick="navigate('deployments')">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/></svg>
+      Deployments
+    </div>
+    <div class="sb-nav-item" id="nav-logs" onclick="navigate('logs')">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+      Logs
+    </div>
+    <div class="sb-nav-item" id="nav-settings" onclick="navigate('settings')">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+      Settings
+    </div>
+  </nav>
+
+  <div class="sb-bottom">
+    <div id="sb-gh-connect" class="sb-bottom-item" onclick="connectGitHub()" style="display:none">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+      GitHub Bağla
+    </div>
+    <div id="sb-gh-connected" class="sb-bottom-item" onclick="disconnectGitHub()" style="display:none" title="Bağlantıyı kes">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+      <span style="color:var(--green);font-size:10px">✓</span> GitHub bağlı
+    </div>
+    <div class="sb-bottom-item" id="sb-logout" onclick="logout()" style="display:none">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+      Çıkış Yap
+    </div>
+    <div class="sb-bottom-item" id="sb-login" onclick="showAuth('login')">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"/></svg>
+      Giriş Yap
+    </div>
+  </div>
+</aside>
+
+<!-- MAIN -->
+<main class="main">
+
+  <!-- HOME -->
+  <div id="page-home" class="page active">
+    <div class="home-hero">
+      <div class="home-badge"><div class="home-badge-dot"></div>FastAPI · Docker · Traefik · ngrok</div>
+      <h1 class="home-h1">Deploy your app<br>in seconds.</h1>
+      <p class="home-sub">GitHub reponuzu verin, build'i, routing'i, her şeyi biz hallederiz.</p>
+      <div class="home-cta">
+        <button class="btn btn-white btn-xl" onclick="showAuth('register')">Ücretsiz Başla →</button>
+        <button class="btn btn-outline btn-xl" onclick="showAuth('login')">Giriş Yap</button>
+      </div>
+    </div>
+    <div class="home-feats">
+      <div class="home-feat"><div class="home-feat-ico">⚡</div><div class="home-feat-t">Otomatik Build</div><div class="home-feat-d">Dockerfile yoksa otomatik üretir.</div></div>
+      <div class="home-feat"><div class="home-feat-ico">🌐</div><div class="home-feat-t">Anlık Subdomain</div><div class="home-feat-d">Her deploy için subdomain hazır.</div></div>
+      <div class="home-feat"><div class="home-feat-ico">🔄</div><div class="home-feat-t">Push to Deploy</div><div class="home-feat-d">GitHub push → otomatik redeploy.</div></div>
+    </div>
+  </div>
+
+  <!-- AUTH -->
+  <div id="page-auth" class="page">
+    <div class="auth-wrap">
+      <div class="auth-card">
+        <div class="auth-hd">
+          <div class="auth-logo"><svg viewBox="0 0 16 16" fill="none"><path d="M8 1L15 14H1L8 1Z" fill="black"/></svg></div>
+          <div class="auth-title" id="at">Giriş Yap</div>
+          <div class="auth-dsub" id="as">Hesabına erişmek için bilgilerini gir</div>
+        </div>
+        <div class="tabs">
+          <div class="tab active" id="tl" onclick="switchTab('login')">Giriş Yap</div>
+          <div class="tab" id="tr" onclick="switchTab('register')">Kayıt Ol</div>
+        </div>
+        <div class="auth-form">
+          <div class="aerr" id="aerr"></div>
+          <div class="field"><label class="label">E-posta</label><input class="inp" id="au" type="email" placeholder="ornek@mail.com" oninput="clearAErr()" onkeydown="aEnter(event)"></div>
+          <div class="field"><label class="label">Şifre</label>
+            <div class="pw-wrap">
+              <input class="inp" id="ap" type="password" placeholder="••••••••" oninput="pwInput()" onkeydown="aEnter(event)">
+              <button class="pw-toggle" onclick="togglePw()">👁</button>
+            </div>
+          </div>
+          <div id="strwrap" style="display:none"><div class="str-bar"><div class="str-fill" id="sf"></div></div><div class="str-hint" id="str-hint"></div></div>
+          <button class="btn btn-white btn-lg btn-full" id="asub" onclick="doAuth()"><span class="spin" id="asp"></span><span id="asubt">Giriş Yap</span></button>
+        </div>
+        <div class="auth-ft"><span id="aft">Hesabın yok mu?</span><a onclick="switchTab(curTab==='login'?'register':'login')" id="afl"> Kayıt ol</a></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PROJECTS -->
+  <div id="page-projects" class="page">
+    <div class="topbar">
+      <span class="topbar-title">Projects</span>
+    </div>
+    <!-- New Project formu -->
+    <div class="new-project-bar">
+      <div class="new-project-title">Yeni Proje</div>
+      <div class="new-project-row">
+        <div class="field"><label class="label">Proje Adı</label><input class="inp" id="np-name" placeholder="my-app" onkeydown="npEnter(event)"></div>
+        <div class="field"><label class="label">GitHub URL</label><input class="inp mono" id="np-url" placeholder="https://github.com/user/repo" onkeydown="npEnter(event)"></div>
+        <button class="btn btn-blue btn-lg" id="np-btn" onclick="createProject()"><span class="spin" id="np-spin"></span>Oluştur</button>
+      </div>
+      <div class="hint"><span class="kbd">Enter</span> ile proje oluşturabilirsiniz</div>
+    </div>
+    <div class="scroll-area">
+      <div class="projects-grid" id="projects-grid">
+        <div class="empty" style="grid-column:1/-1"><div class="empty-ic">📦</div><div class="empty-t">Henüz proje yok</div><div class="empty-s">Yukarıdaki formu kullanarak ilk projenizi oluşturun</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DEPLOYMENTS -->
+  <div id="page-deployments" class="page">
+    <div class="topbar">
+      <span class="topbar-title">Deployments</span>
+      <span class="topbar-sep" id="tb-sep" style="display:none">/</span>
+      <span id="tb-proj" style="display:none;font-size:13px;color:var(--text-2)"></span>
+      <div class="topbar-actions">
+        <button class="btn btn-ghost" id="clear-filter-btn" onclick="clearFilter()" style="display:none;height:28px;font-size:11.5px">✕ Filtreyi kaldır</button>
+        <button class="btn btn-ghost" onclick="loadData()" style="height:28px;font-size:11.5px">
+          <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor"><path d="M13.65 2.35A8 8 0 1 0 15 8h-2a6 6 0 1 1-1.07-3.41L9.5 7H15V1.5l-1.35.85z"/></svg>
+          Yenile
+        </button>
+      </div>
+    </div>
+    <div class="filter-bar">
+      <select class="filter-select" id="proj-filter" onchange="applyFilter()">
+        <option value="">Tüm Projeler</option>
+      </select>
+    </div>
+    <div class="kpi-strip">
+      <div class="kpi-item"><div class="kpi-label">Toplam</div><div class="kpi-value" id="kv-t">—</div></div>
+      <div class="kpi-item"><div class="kpi-label">Çalışıyor</div><div class="kpi-value g" id="kv-r">—</div></div>
+      <div class="kpi-item"><div class="kpi-label">Bekliyor</div><div class="kpi-value a" id="kv-p">—</div></div>
+      <div class="kpi-item"><div class="kpi-label">Başarısız</div><div class="kpi-value r" id="kv-f">—</div></div>
+    </div>
+    <div class="scroll-area">
+      <div class="tbl-wrap">
+        <div class="tbl-hd">
+          <div class="tbl-title">Tüm Deployments <span class="cnt-badge" id="tcnt">0</span></div>
+        </div>
+        <div class="tbl">
+          <div class="tbl-head"><div>#</div><div>Proje</div><div>Repo</div><div>Durum</div><div>Tarih</div><div>Aksiyonlar</div></div>
+          <div id="tbody"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- LOGS -->
+<div id="page-logs" class="page">
+  <div class="topbar">
+    <span class="topbar-title">Logs</span>
+    <div class="topbar-actions">
+      <button class="btn btn-ghost" onclick="loadLogs()" style="height:28px;font-size:11.5px">
+        <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor"><path d="M13.65 2.35A8 8 0 1 0 15 8h-2a6 6 0 1 1-1.07-3.41L9.5 7H15V1.5l-1.35.85z"/></svg>
+        Yenile
+      </button>
+    </div>
+  </div>
+  <div class="logs-toolbar">
+    <select class="filter-select" id="logs-proj-filter" onchange="loadLogs()">
+      <option value="">Proje seçin...</option>
+    </select>
+    <div style="display:flex;gap:6px;margin-left:auto">
+      <button class="btn btn-ghost" id="logs-filter-all" onclick="setLogFilter('all')" style="height:28px;font-size:11px;border:1px solid var(--border-md)">Tümü</button>
+      <button class="btn btn-ghost" id="logs-filter-er" onclick="setLogFilter('er')" style="height:28px;font-size:11px;color:var(--red);border:1px solid rgba(243,18,96,.2)">Hata</button>
+      <button class="btn btn-ghost" id="logs-filter-ok" onclick="setLogFilter('ok')" style="height:28px;font-size:11px;color:var(--green);border:1px solid rgba(0,201,80,.2)">Başarılı</button>
+    </div>
+  </div>
+  <div class="logs-body" id="logs-body">
+    <div class="log-empty">
+      <div style="font-size:24px;margin-bottom:4px">📋</div>
+      <div style="font-size:13px;font-weight:500;color:var(--text-2)">Proje seçin</div>
+      <div style="font-size:11.5px">Yukarıdan bir proje seçerek logları görüntüleyin</div>
+    </div>
+  </div>
+</div>
+
+  <!-- SETTINGS -->
+  <div id="page-settings" class="page" style="flex-direction:column;overflow-y:auto">
+    <div class="topbar">
+      <span class="topbar-title">Settings</span>
+    </div>
+    <div class="filter-bar">
+      <select class="filter-select" id="settings-proj-select" onchange="onSettingsProjChange()">
+        <option value="">Proje seçin...</option>
+      </select>
+    </div>
+    <div style="max-width:640px;width:100%;padding:24px;margin:0 auto;display:flex;flex-direction:column;gap:20px">
+
+      <!-- General -->
+      <div style="background:var(--bg-1);border:1px solid var(--border-md);border-radius:var(--r-lg);overflow:hidden">
+        <div style="padding:16px 20px;border-bottom:1px solid var(--border)">
+          <div style="font-size:13px;font-weight:500;color:var(--text)">General</div>
+          <div style="font-size:11.5px;color:var(--text-3);margin-top:2px">Proje adı ve GitHub URL ayarları</div>
+        </div>
+        <div style="padding:20px;display:flex;flex-direction:column;gap:14px">
+          <div class="field"><label class="label">Proje Adı</label><input class="inp" id="st-proj-name" placeholder="proje-adi"></div>
+          <div class="field"><label class="label">GitHub URL</label><input class="inp" id="st-github-url" placeholder="https://github.com/kullanici/repo"></div>
+          <button class="btn btn-white" onclick="saveGeneralSettings()" style="align-self:flex-start">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+            Kaydet
+          </button>
+        </div>
+      </div>
+
+      <!-- Git -->
+      <div style="background:var(--bg-1);border:1px solid var(--border-md);border-radius:var(--r-lg);overflow:hidden">
+        <div style="padding:16px 20px;border-bottom:1px solid var(--border)">
+          <div style="font-size:13px;font-weight:500;color:var(--text)">Git</div>
+          <div style="font-size:11.5px;color:var(--text-3);margin-top:2px">GitHub hesap bağlantısı</div>
+        </div>
+        <div style="padding:20px" id="st-git-section">
+          <div id="st-gh-connected" style="display:none">
+            <div style="display:flex;align-items:center;justify-content:space-between">
+              <div>
+                <div style="font-size:12.5px;font-weight:500;color:var(--text)">Bağlı</div>
+                <div style="font-size:11.5px;color:var(--text-3);margin-top:2px" id="st-gh-email"></div>
+              </div>
+              <button class="btn" style="background:transparent;border:1px solid var(--border-md);color:var(--text-2);font-size:11.5px" onclick="disconnectGitHub()">Bağlantıyı Kes</button>
+            </div>
+          </div>
+          <div id="st-gh-disconnected" style="display:none">
+            <div style="display:flex;align-items:center;justify-content:space-between">
+              <div style="font-size:12.5px;color:var(--text-3)">GitHub bağlı değil</div>
+              <button class="btn btn-white" onclick="connectGitHub()">GitHub Bağla</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Danger Zone -->
+      <div style="background:var(--bg-1);border:1px solid rgba(243,18,96,.3);border-radius:var(--r-lg);overflow:hidden">
+        <div style="padding:16px 20px;border-bottom:1px solid rgba(243,18,96,.15)">
+          <div style="font-size:13px;font-weight:500;color:#f31260">Danger Zone</div>
+          <div style="font-size:11.5px;color:var(--text-3);margin-top:2px">Bu işlemler geri alınamaz</div>
+        </div>
+        <div style="padding:20px;display:flex;align-items:center;justify-content:space-between">
+          <div>
+            <div style="font-size:12.5px;font-weight:500;color:var(--text)">Bu Projeyi Sil</div>
+            <div style="font-size:11.5px;color:var(--text-3);margin-top:2px">Proje ve tüm deployment'lar kalıcı olarak silinir</div>
+          </div>
+          <button class="btn" onclick="deleteProjectFromSettings()"
+            style="background:transparent;border:1px solid #f31260;color:#f31260;font-size:12px">
+            Projeyi Sil
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</main>
+</div>
+
+<!-- DRAWER -->
+<div class="drawer normal" id="drawer">
+  <div class="drawer-hd">
+    <div class="drawer-title"><span style="color:var(--amber)">◉</span><span id="dl-proj">build logs</span><span class="drawer-status" id="dl-status"></span></div>
+    <div class="drawer-hd-right">
+      <button class="drawer-expand" onclick="toggleDrawerSize()" id="expand-btn">⬆</button>
+      <button class="btn btn-ghost" onclick="closeDrawer()" style="height:24px;font-size:11px;padding:0 7px">✕</button>
+    </div>
+  </div>
+  <div class="drawer-body" id="dl-body"></div>
+</div>
+
+<!-- MODAL -->
+<div class="modal-overlay" id="del-modal">
+  <div class="modal">
+    <div class="modal-icon">🗑</div>
+    <div class="modal-title" id="del-modal-title">Deploy'u sil</div>
+    <div class="modal-desc"><strong id="del-proj-name"></strong><span id="del-modal-desc"> silinecek. Bu işlem geri alınamaz.</span></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeDeleteModal()">Vazgeç</button>
+      <button class="btn btn-red btn-lg" id="del-confirm-btn" onclick="confirmDelete()">
+        <span class="spin" id="del-spin" style="border-color:rgba(243,18,96,.2);border-top-color:var(--red)"></span>Sil
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="toasts" id="toasts"></div>
+
+<script>
+let token = localStorage.getItem('paas_token')
+let settingsProject = null
+let githubConnected = false || null
+let me = localStorage.getItem('paas_email') || null
+let curTab = 'login'
+let rows = []        // deployments
+let projects = []    // projects
+let polling = new Set()
+let pendingDeleteId = null
+let pendingDeleteType = 'deployment' // 'deployment' | 'project'
+let drawerDeployId = null
+let drawerExpanded = false
+let activeFilter = ''
+let _autoRefresh = null
+
+const PAGES = ['home','auth','projects','deployments','logs','settings']
+
+// ── Init ──────────────────────────────────────────────────
+window.onload = async () => {
+  const params = new URLSearchParams(window.location.search)
+  if (params.get('github') === 'connected') {
+    window.history.replaceState({}, '', '/')
+    setTimeout(() => { toast('success', '✓ GitHub hesabınız bağlandı'); checkGithubStatus() }, 400)
+  }
+  if (token) {
+    try {
+      const r = await af('http://localhost:8090/api/me')
+      if (r.ok) {
+        const d = await r.json()
+        setUser(d.email)
+        await loadData()
+        showPage('projects')
+        return
+      }
+    } catch {}
+    clearToken()
+  }
+  showPage('home')
+}
+
+// ── Pages ─────────────────────────────────────────────────
+function showPage(p) {
+  PAGES.forEach(id => {
+    const el = document.getElementById('page-' + id)
+    if (el) el.classList.remove('active')
+  })
+  const el = document.getElementById('page-' + p)
+  if (el) el.classList.add('active')
+  document.querySelectorAll('.sb-nav-item').forEach(el => el.classList.remove('active'))
+  const nav = document.getElementById('nav-' + p)
+  if (nav) nav.classList.add('active')
+
+  // Sidebar'ı sadece giriş yapılmışsa göster
+  const sidebar = document.getElementById('sidebar')
+  if (token && p !== 'home' && p !== 'auth') {
+    sidebar.classList.remove('hidden')
+  } else {
+    sidebar.classList.add('hidden')
+  }
+}
+function navigate(p) {
+  showPage(p)
+  if (p === 'logs') updateLogsFilterSelect()
+  if (p === 'settings') loadSettingsPage()
+}
+function goHome() { token ? showPage('projects') : showPage('home') }
+function showAuth(t) { switchTab(t); showPage('auth') }
+
+// ── Project CRUD ───────────────────────────────────────────
+function npEnter(e) { if (e.key === 'Enter') createProject() }
+
+async function createProject() {
+  const name = document.getElementById('np-name').value.trim()
+  const url  = document.getElementById('np-url').value.trim()
+  if (!name) { shake('np-name'); return }
+  if (!url)  { shake('np-url'); return }
+  const btn = document.getElementById('np-btn'), sp = document.getElementById('np-spin')
+  btn.disabled = true; sp.style.display = 'inline-block'
+  try {
+    const r = await af('http://localhost:8090/api/projects', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({project_name: name, github_url: url})
+    })
+    if (r.status === 401) { logout(); return }
+    const d = await r.json()
+    if (!r.ok) { toast('error', d.detail || 'Proje oluşturulamadı'); return }
+    document.getElementById('np-name').value = ''
+    document.getElementById('np-url').value = ''
+    toast('success', '🚀 "' + name + '" oluşturuldu, deploy başlatıldı')
+    await loadData()
+    // Yeni deploy'u drawer'da göster
+    openDrawer(d.deploy_id, name, 'building')
+    pollDeploy(d.deploy_id)
+    // Deployments sayfasına geç ve filtrele
+    activeFilter = name
+    document.getElementById('proj-filter').value = name
+    applyFilter()
+    navigate('deployments')
+  } catch { toast('error', 'Bağlantı hatası') }
+  finally { btn.disabled = false; sp.style.display = 'none' }
+}
+
+async function redeployProject(projectName) {
+  try {
+    const r = await af(`http://localhost:8090/api/projects/${encodeURIComponent(projectName)}/redeploy`, {method: 'POST'})
+    if (!r.ok) { const d = await r.json(); toast('error', d.detail || 'Redeploy başlatılamadı'); return }
+    const d = await r.json()
+    toast('success', '🔄 "' + projectName + '" redeploy başlatıldı')
+    await loadData()
+    openDrawer(d.deploy_id, projectName, 'building')
+    pollDeploy(d.deploy_id)
+    activeFilter = projectName
+    document.getElementById('proj-filter').value = projectName
+    applyFilter()
+    navigate('deployments')
+  } catch { toast('error', 'Bağlantı hatası') }
+}
+
+// ── Render ─────────────────────────────────────────────────
+function renderProjects() {
+  const grid = document.getElementById('projects-grid')
+  if (!projects.length) {
+    grid.innerHTML = '<div class="empty" style="grid-column:1/-1"><div class="empty-ic">📦</div><div class="empty-t">Henüz proje yok</div><div class="empty-s">Yukarıdaki formu kullanarak ilk projenizi oluşturun</div></div>'
+    return
+  }
+  grid.innerHTML = projects.map(p => {
+    // Bu projenin son deployment durumu
+    const projRows = rows.filter(r => r.project_name.toLowerCase() === p.project_name.toLowerCase())
+    const latest = projRows[0]
+    const st = latest ? latest.status.toLowerCase() : 'stopped'
+    const dotClass = st === 'running' ? 'running' : st === 'failed' ? 'failed' : (st === 'pending' || st === 'building') ? 'pending' : 'stopped'
+    const statusText = st === 'running' ? 'Running' : st === 'failed' ? 'Failed' : (st === 'pending' || st === 'building') ? 'Building' : 'Stopped'
+    const initials = p.project_name.substring(0, 2).toUpperCase()
+    const repo = p.github_url.replace('https://github.com/', '')
+    const dt = p.created_at ? new Date(p.created_at).toLocaleDateString('tr-TR') : '—'
+    return `<div class="proj-card" onclick="openProjectDeployments('${p.project_name}')">
+      <div class="proj-card-top">
+        <div class="proj-card-icon">${initials}</div>
+        <div class="proj-card-status"><div class="proj-card-dot ${dotClass}"></div>${statusText}</div>
+      </div>
+      <div class="proj-card-name">${p.project_name}</div>
+      <div class="proj-card-repo">${repo}</div>
+      <div class="proj-card-footer">
+        <span class="proj-card-meta">${dt} · ${projRows.length} deploy</span>
+        <div class="proj-card-actions" onclick="event.stopPropagation()" style="position:relative">
+          <button class="act-btn" onclick="toggleCardMenu(event,'menu-${p.project_name}')" title="Seçenekler" style="font-size:16px;letter-spacing:1px">···</button>
+          <div id="menu-${p.project_name}" class="card-menu" style="display:none">
+            <div class="card-menu-item" onclick="redeployProject('${p.project_name}')">↺ Redeploy</div>
+            <div class="card-menu-item" onclick="openSettingsByName('${p.project_name}')">⚙ Ayarlar</div>
+            <div class="card-menu-item card-menu-danger" onclick="openDeleteModal('${p.project_name}','project')">🗑 Sil</div>
+          </div>
+        </div>
+      </div>
+    </div>`
+  }).join('')
+}
+
+function openProjectDeployments(name) {
+  activeFilter = name
+  document.getElementById('proj-filter').value = name
+  applyFilter()
+  navigate('deployments')
+}
+
+function renderTable() {
+  const filtered = activeFilter ? rows.filter(r => r.project_name.toLowerCase() === activeFilter.toLowerCase()) : rows
+  const t = filtered.length
+  const r = filtered.filter(d => d.status === 'Running').length
+  const pend = filtered.filter(d => d.status === 'Pending' || d.status === 'Building').length
+  const f = filtered.filter(d => d.status === 'Failed').length
+  document.getElementById('kv-t').textContent = t
+  document.getElementById('kv-r').textContent = r
+  document.getElementById('kv-p').textContent = pend
+  document.getElementById('kv-f').textContent = f
+  document.getElementById('tcnt').textContent = t
+  const b = document.getElementById('tbody')
+  if (!t) { b.innerHTML = '<div class="empty"><div class="empty-ic">🚀</div><div class="empty-t">Deployment bulunamadı</div><div class="empty-s">Projects sayfasından yeni proje oluşturun</div></div>'; return }
+  b.innerHTML = filtered.map(d => {
+    const st = (d.status || '').toLowerCase()
+    const dt = d.created_at ? new Date(d.created_at).toLocaleString('tr-TR', {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—'
+    const short = (d.github_url || '').replace('https://github.com/', '').substring(0, 28)
+    const openBtn = d.subdomain && st === 'running' ? `<button class="act-btn act-open" onclick="window.open('http://${d.subdomain}:8090','_blank')">↗ Aç</button>` : ''
+    const redeployBtn = `<button class="act-btn act-redeploy" onclick="redeployProject('${d.project_name}')" title="Redeploy">↺ Redeploy</button>`
+    const stopBtn = st === 'running' ? `<button class="act-btn act-stop" onclick="stopDeploy(${d.id})" title="Durdur">⏹</button>` : ''
+    const logBtn = `<button class="act-btn act-log" onclick="openDrawer(${d.id},'${d.project_name}','${st}')">Log</button>`
+    const delBtn = `<button class="act-btn act-del" onclick="openDeleteModal(${d.id},'deployment')" title="Sil">🗑</button>`
+    return `<div class="tbl-row">
+      <div class="tr-id">#${d.id}</div>
+      <div class="tr-name">${d.project_name}</div>
+      <div class="tr-url">${short}</div>
+      <div><span class="chip ${st}"><span class="chip-d"></span>${d.status}</span></div>
+      <div class="tr-time">${dt}</div>
+      <div class="tr-actions">${openBtn}${redeployBtn}${stopBtn}${logBtn}${delBtn}</div>
+    </div>`
+  }).join('')
+}
+
+// ── Filter ─────────────────────────────────────────────────
+function updateFilterSelect() {
+  const select = document.getElementById('proj-filter')
+  select.innerHTML = '<option value="">Tüm Projeler</option>' +
+    projects.map(p => `<option value="${p.project_name}" ${activeFilter === p.project_name ? 'selected' : ''}>${p.project_name}</option>`).join('')
+}
+
+function applyFilter() {
+  activeFilter = document.getElementById('proj-filter').value
+  const sep = document.getElementById('tb-sep')
+  const proj = document.getElementById('tb-proj')
+  const clearBtn = document.getElementById('clear-filter-btn')
+  if (activeFilter) {
+    sep.style.display = 'inline'; proj.style.display = 'inline'
+    proj.textContent = activeFilter; clearBtn.style.display = 'inline-flex'
+  } else {
+    sep.style.display = 'none'; proj.style.display = 'none'; clearBtn.style.display = 'none'
+  }
+  renderTable()
+}
+
+function clearFilter() {
+  activeFilter = ''
+  document.getElementById('proj-filter').value = ''
+  applyFilter()
+}
+
+// ── Auth ───────────────────────────────────────────────────
+function switchTab(t) {
+  curTab = t
+  document.getElementById('tl').classList.toggle('active', t==='login')
+  document.getElementById('tr').classList.toggle('active', t==='register')
+  document.getElementById('at').textContent = t==='login' ? 'Giriş Yap' : 'Yeni Hesap Oluştur'
+  document.getElementById('as').textContent = t==='login' ? 'Hesabına erişmek için bilgilerini gir' : 'Saniyeler içinde deploy etmeye başla'
+  document.getElementById('asubt').textContent = t==='login' ? 'Giriş Yap' : 'Kayıt Ol'
+  document.getElementById('aft').textContent = t==='login' ? "Hesabın yok mu?" : "Zaten hesabın var mı?"
+  document.getElementById('afl').textContent = t==='login' ? ' Kayıt ol' : ' Giriş yap'
+  document.getElementById('strwrap').style.display = t==='register' ? 'block' : 'none'
+  clearAErr()
+  document.getElementById('au').value = ''
+  document.getElementById('ap').value = ''
+}
+function clearAErr() { document.getElementById('aerr').classList.remove('on'); document.getElementById('au').classList.remove('err'); document.getElementById('ap').classList.remove('err') }
+function showErr(m) { const e = document.getElementById('aerr'); e.textContent = m; e.classList.add('on') }
+function pwInput() {
+  if (curTab !== 'register') return
+  const pw = document.getElementById('ap').value, fill = document.getElementById('sf'), hint = document.getElementById('str-hint')
+  let s = 0
+  if (pw.length>=8) s++; if (/[A-Z]/.test(pw)) s++; if (/[a-z]/.test(pw)) s++; if (/[0-9]/.test(pw)) s++; if (/[^A-Za-z0-9]/.test(pw)) s++
+  const c=['transparent','#f31260','#f5a524','#f5a524','#00c950','#00c950'], w=['0%','20%','45%','65%','85%','100%']
+  fill.style.width=w[s]; fill.style.background=c[s]
+  const msgs=['','⚠ Çok zayıf','⚠ Zayıf','○ Orta','● Güçlü','✓ Çok güçlü']
+  hint.textContent=pw?msgs[s]:''; hint.style.color=c[s]
+}
+function togglePw() { const i=document.getElementById('ap'); i.type=i.type==='password'?'text':'password' }
+function aEnter(e) { if (e.key==='Enter') doAuth() }
+
+async function doAuth() {
+  const email=document.getElementById('au').value.trim(), pass=document.getElementById('ap').value
+  clearAErr()
+  if (!email) { showErr('E-posta adresi gerekli'); document.getElementById('au').classList.add('err'); return }
+  if (!pass) { showErr('Şifre gerekli'); document.getElementById('ap').classList.add('err'); return }
+  const btn=document.getElementById('asub'), sp=document.getElementById('asp')
+  btn.disabled=true; sp.style.display='inline-block'
+  try {
+    const url = curTab==='login' ? 'http://localhost:8090/api/login' : 'http://localhost:8090/api/register'
+    const r = await fetch(url, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password:pass})})
+    const d = await r.json()
+    if (!r.ok) { showErr(d.detail||'Hata'); return }
+    token=d.token; me=email
+    localStorage.setItem('paas_token',token); localStorage.setItem('paas_email',me)
+    setUser(me); toast('success', curTab==='login' ? '👋 Hoş geldin!' : '🎉 Kayıt başarılı!')
+    await loadData(); showPage('projects')
+  } catch { showErr('Sunucuya bağlanılamadı') }
+  finally { btn.disabled=false; sp.style.display='none' }
+}
+
+// ── User ───────────────────────────────────────────────────
+function setUser(u) {
+  me=u
+  document.getElementById('sb-user').style.display='flex'
+  document.getElementById('sb-user-email').textContent=u.includes('@')?u.split('@')[0]:u
+  document.getElementById('sb-nav').style.display='block'
+  document.getElementById('sb-logout').style.display='flex'
+  document.getElementById('sb-login').style.display='none'
+  document.querySelector('.sidebar').classList.remove('hidden')
+  checkGithubStatus(); startAutoRefresh()
+}
+
+// ── Settings ───────────────────────────────────────────────
+function loadSettingsPage() {
+  // Proje seçicisini doldur
+  const sel = document.getElementById('settings-proj-select')
+  if (sel) {
+    const cur = settingsProject ? settingsProject.project_name : ''
+    sel.innerHTML = '<option value="">Proje seçin...</option>' +
+      projects.map(p => `<option value="${p.project_name}" ${p.project_name===cur?'selected':''}>${p.project_name}</option>`).join('')
+    // settingsProject yoksa select'te seçili proje varsa onu al
+    if (!settingsProject && sel.value) {
+      settingsProject = projects.find(p => p.project_name === sel.value) || null
+    }
+  }
+  const proj = settingsProject
+  if (!proj) {
+    document.getElementById('st-proj-name').value = ''
+    document.getElementById('st-github-url').value = ''
+    document.getElementById('st-gh-connected').style.display = 'none'
+    document.getElementById('st-gh-disconnected').style.display = 'none'
+    return
+  }
+  settingsProject = proj
+  document.getElementById('st-proj-name').value = proj.project_name
+  document.getElementById('st-github-url').value = proj.github_url || ''
+  // GitHub bağlantı durumu
+  const ghConn = document.getElementById('st-gh-connected')
+  const ghDisc = document.getElementById('st-gh-disconnected')
+  const ghEmail = document.getElementById('st-gh-email')
+  if (githubConnected) {
+    ghConn.style.display = 'block'; ghDisc.style.display = 'none'
+    ghEmail.textContent = me || ''
+  } else {
+    ghConn.style.display = 'none'; ghDisc.style.display = 'block'
+  }
+}
+
+function toggleCardMenu(e, menuId) {
+  e.stopPropagation()
+  // Diğer açık menüleri kapat
+  document.querySelectorAll('.card-menu').forEach(m => {
+    if (m.id !== menuId) m.style.display = 'none'
+  })
+  const menu = document.getElementById(menuId)
+  if (menu) menu.style.display = menu.style.display === 'none' ? 'block' : 'none'
+}
+// Herhangi bir yere tıklanınca menüleri kapat
+document.addEventListener('click', () => {
+  document.querySelectorAll('.card-menu').forEach(m => m.style.display = 'none')
+})
+
+function openSettingsByName(projName) {
+  const proj = projects.find(p => p.project_name === projName)
+  if (proj) openSettings(proj)
+}
+
+function openSettings(proj) {
+  settingsProject = proj
+  navigate('settings')
+}
+
+function onSettingsProjChange() {
+  const sel = document.getElementById('settings-proj-select')
+  const projName = sel.value
+  if (!projName) { settingsProject = null; loadSettingsPage(); return }
+  const proj = projects.find(p => p.project_name === projName)
+  if (proj) {
+    settingsProject = proj
+    // Alanları hemen doldur
+    document.getElementById('st-proj-name').value = proj.project_name
+    document.getElementById('st-github-url').value = proj.github_url || ''
+    const ghConn = document.getElementById('st-gh-connected')
+    const ghDisc = document.getElementById('st-gh-disconnected')
+    const ghEmail = document.getElementById('st-gh-email')
+    if (githubConnected) {
+      ghConn.style.display = 'block'; ghDisc.style.display = 'none'
+      ghEmail.textContent = me || ''
+    } else {
+      ghConn.style.display = 'none'; ghDisc.style.display = 'block'
+    }
+  }
+}
+
+async function saveGeneralSettings() {
+  if (!settingsProject) return
+  const name = document.getElementById('st-proj-name').value.trim()
+  const url  = document.getElementById('st-github-url').value.trim()
+  if (!name || !url) { toast('error', 'Ad ve URL zorunlu'); return }
+  try {
+    const r = await af(`http://localhost:8090/api/projects/${settingsProject.project_name}`, {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({project_name: name, github_url: url})
+    })
+    if (r.ok) {
+      toast('success', 'Ayarlar kaydedildi')
+      await loadData()
+      settingsProject = projects.find(p => p.project_name === name) || settingsProject
+      loadSettingsPage()
+    } else {
+      const d = await r.json()
+      toast('error', d.detail || 'Kaydetme başarısız')
+    }
+  } catch { toast('error', 'Sunucuya bağlanılamadı') }
+}
+
+async function deleteProjectFromSettings() {
+  if (!settingsProject) return
+  const projName = settingsProject.project_name
+  const input = prompt(`Bu işlemi geri alamazsınız.\nOnaylamak için proje adını girin: ${projName}`)
+  if (input !== projName) { if (input !== null) toast('error', 'Proje adı eşleşmiyor'); return }
+  try {
+    const r = await af(`http://localhost:8090/api/projects/${projName}`, { method: 'DELETE' })
+    if (r.ok) {
+      toast('success', 'Proje silindi')
+      settingsProject = null
+      await loadData()
+      navigate('projects')
+    } else {
+      const d = await r.json()
+      toast('error', d.detail || 'Silme başarısız')
+    }
+  } catch { toast('error', 'Sunucuya bağlanılamadı') }
+}
+
+function logout() {
+  stopAutoRefresh(); clearToken(); rows=[]; projects=[]
+  document.getElementById('sb-user').style.display='none'
+  document.getElementById('sb-nav').style.display='none'
+  document.getElementById('sb-logout').style.display='none'
+  document.getElementById('sb-login').style.display='flex'
+  document.getElementById('sb-gh-connect').style.display='none'
+  document.getElementById('sb-gh-connected').style.display='none'
+  document.querySelector('.sidebar').classList.add('hidden')
+  closeDrawer(); showPage('home'); toast('success','Çıkış yapıldı')
+}
+function clearToken() { token=null; me=null; localStorage.removeItem('paas_token'); localStorage.removeItem('paas_email') }
+
+// ── Data ───────────────────────────────────────────────────
+async function loadData() {
+  try {
+    const [rp, rd] = await Promise.all([
+      af('http://localhost:8090/api/projects'),
+      af('http://localhost:8090/api/deployments')
+    ])
+    if (rp.ok) projects = await rp.json()
+    if (rd.ok) rows = await rd.json()
+    updateFilterSelect(); renderProjects(); renderTable(); updateLogsFilterSelect()
+    rows.filter(d=>d.status==='Pending'||d.status==='Building').forEach(d=>{if(!polling.has(d.id))pollDeploy(d.id)})
+  } catch {}
+}
+
+async function pollDeploy(id) {
+  if (polling.has(id)) return; polling.add(id)
+  const tick = async () => {
+    try {
+      const r=await af('http://localhost:8090/api/status/'+id); if (!r.ok) { polling.delete(id); return }
+      const d=await r.json()
+      const i=rows.findIndex(x=>x.id===id); if (i!==-1) rows[i]=d
+      renderTable(); renderProjects(); updateLogsFilterSelect()
+      if (drawerDeployId===id) updateDrawer(d)
+      if (d.status==='Pending'||d.status==='Building') setTimeout(tick,2000)
+      else {
+        polling.delete(id)
+        if (d.status==='Running') toast('success','✅ "'+d.project_name+'" yayında!')
+        else if (d.status==='Failed') { toast('error','❌ "'+d.project_name+'" başarısız'); if (drawerDeployId===id) updateDrawer(d) }
+      }
+    } catch { polling.delete(id) }
+  }; tick()
+}
+
+function startAutoRefresh() { if (_autoRefresh) return; _autoRefresh=setInterval(()=>{if(token)loadData()},5000) }
+function stopAutoRefresh() { clearInterval(_autoRefresh); _autoRefresh=null }
+
+// ── Stop ───────────────────────────────────────────────────
+async function stopDeploy(id) {
+  try {
+    const r=await af(`http://localhost:8090/api/deployments/${id}/stop`,{method:'POST'})
+    if (!r.ok) { const d=await r.json(); toast('error',d.detail||'Durdurulamadı'); return }
+    const i=rows.findIndex(x=>x.id===id); if (i!==-1) rows[i].status='Stopped'
+    renderTable(); renderProjects(); updateLogsFilterSelect(); toast('success','⏹ Deployment durduruldu')
+  } catch { toast('error','Bağlantı hatası') }
+}
+
+// ── Delete ─────────────────────────────────────────────────
+function openDeleteModal(id, type) {
+  pendingDeleteId = id
+  pendingDeleteType = type
+  if (type === 'project') {
+    document.getElementById('del-modal-title').textContent = 'Projeyi sil'
+    document.getElementById('del-proj-name').textContent = '"' + id + '"'
+    document.getElementById('del-modal-desc').textContent = ' ve tüm deployment\'ları silinecek. Bu işlem geri alınamaz.'
+  } else {
+    document.getElementById('del-modal-title').textContent = 'Deploy\'u sil'
+    document.getElementById('del-proj-name').textContent = '#' + id
+    document.getElementById('del-modal-desc').textContent = ' silinecek. Bu işlem geri alınamaz.'
+  }
+  document.getElementById('del-modal').classList.add('open')
+}
+function closeDeleteModal() { document.getElementById('del-modal').classList.remove('open'); pendingDeleteId=null }
+document.getElementById('del-modal').addEventListener('click',function(e){if(e.target===this)closeDeleteModal()})
+
+async function confirmDelete() {
+  if (!pendingDeleteId) return
+  const btn=document.getElementById('del-confirm-btn'), sp=document.getElementById('del-spin')
+  btn.disabled=true; sp.style.display='inline-block'
+  try {
+    let url, method = 'DELETE'
+    if (pendingDeleteType === 'project') {
+      url = `http://localhost:8090/api/projects/${encodeURIComponent(pendingDeleteId)}`
+    } else {
+      url = `http://localhost:8090/api/deployments/${pendingDeleteId}`
+    }
+    const r = await af(url, {method})
+    if (!r.ok) { const d=await r.json(); toast('error',d.detail||'Silinemedi'); return }
+    if (pendingDeleteType === 'project') {
+      projects = projects.filter(p => p.project_name !== pendingDeleteId)
+      rows = rows.filter(r => r.project_name.toLowerCase() !== pendingDeleteId.toLowerCase())
+      toast('success','🗑 Proje silindi')
+    } else {
+      rows = rows.filter(x=>x.id!==pendingDeleteId)
+      if (drawerDeployId===pendingDeleteId) closeDrawer()
+      toast('success','🗑 Deploy silindi')
+    }
+    renderTable(); renderProjects(); updateLogsFilterSelect(); updateFilterSelect()
+    closeDeleteModal()
+  } catch { toast('error','Bağlantı hatası') }
+  finally { btn.disabled=false; sp.style.display='none' }
+}
+
+// ── Drawer ─────────────────────────────────────────────────
+function ts() { return `<span class="ll ts">[${new Date().toLocaleTimeString('tr-TR')}]</span> ` }
+
+async function openDrawer(deployId, projName, status) {
+  drawerDeployId=deployId
+  document.getElementById('dl-proj').textContent=projName+' / build logs'
+  setDrawerStatus(status)
+  const b=document.getElementById('dl-body')
+  b.innerHTML=''
+  document.getElementById('drawer').classList.add('open','normal')
+  if (status==='building'||status==='pending') {
+    b.innerHTML=`<span class="ll inf">${ts()}WebSocket bağlanıyor...</span>`
+    const ws=new WebSocket(`ws://localhost:5000/ws/${projName.toLowerCase()}`)
+    ws.onopen=()=>{b.innerHTML=`<span class="ll inf">${ts()}Pipeline başlatıldı, loglar geliyor...</span>`}
+    ws.onmessage=(e)=>{
+      const line=e.data; let cls='inf'
+      if(line.startsWith('[+]')||line.includes('SUCCESS'))cls='ok'
+      else if(line.startsWith('[-]')||line.toLowerCase().includes('error'))cls='er'
+      else if(line.startsWith('[!]'))cls='warn'
+      b.innerHTML+=`<span class="ll ${cls}">${ts()}${line}</span>`; b.scrollTop=b.scrollHeight
+    }
+    ws.onerror=()=>{b.innerHTML+=`<span class="ll warn">${ts()}WebSocket bağlantısı kurulamadı.</span>`}
+    ws.onclose=()=>{b.innerHTML+=`<span class="ll ts">${ts()}--- log stream sona erdi ---</span>`; b.scrollTop=b.scrollHeight}
+  } else {
+    b.innerHTML=`<span class="ll ts">${ts()}Loglar yükleniyor...</span>`
+    try {
+      const r=await fetch(`http://localhost:5000/logs/${projName.toLowerCase()}`)
+      if (r.ok) {
+        const data=await r.json(); b.innerHTML=''
+        data.lines.forEach(line=>{
+          let cls='inf'
+          if(line.startsWith('[+]')||line.includes('SUCCESS'))cls='ok'
+          else if(line.startsWith('[-]')||line.toLowerCase().includes('error'))cls='er'
+          else if(line.startsWith('[!]'))cls='warn'
+          b.innerHTML+=`<span class="ll ${cls}">${line}</span>`
+        })
+      } else { b.innerHTML=`<span class="ll warn">${ts()}Log dosyası mevcut değil.</span>` }
+    } catch { b.innerHTML=`<span class="ll warn">${ts()}Loglara ulaşılamadı.</span>` }
+    b.scrollTop=b.scrollHeight
+  }
+}
+function updateDrawer(d) {
+  if (drawerDeployId!==d.id) return
+  const b=document.getElementById('dl-body'), st=(d.status||'').toLowerCase()
+  setDrawerStatus(st)
+  if (st==='running') {
+    b.innerHTML+=`<span class="ll ok">${ts()}✓ Build tamamlandı</span>`
+    b.innerHTML+=`<span class="ll ok">${ts()}✓ Uygulama yayında: http://${d.subdomain}:8090</span>`
+  } else if (st==='failed') {
+    if (!document.querySelector('.ll.er')) b.innerHTML+=`<span class="ll er">${ts()}✗ Build başarısız oldu</span>`
+  }
+  b.scrollTop=b.scrollHeight
+}
+function setDrawerStatus(st) {
+  const el=document.getElementById('dl-status')
+  el.className='drawer-status '+st
+  el.textContent={running:'Running',building:'Building',pending:'Pending',failed:'Failed',stopped:'Stopped'}[st]||st
+}
+function closeDrawer() { document.getElementById('drawer').classList.remove('open'); drawerDeployId=null }
+function toggleDrawerSize() {
+  const d=document.getElementById('drawer'), btn=document.getElementById('expand-btn')
+  drawerExpanded=!drawerExpanded; d.classList.toggle('expanded',drawerExpanded); d.classList.toggle('normal',!drawerExpanded)
+  btn.textContent=drawerExpanded?'⬇':'⬆'
+}
+
+// ── Logs ───────────────────────────────────────────────────
+let activeLogFilter = 'all'
+let allLogLines = []
+
+function updateLogsFilterSelect() {
+  const select = document.getElementById('logs-proj-filter')
+  if (!select) return
+  const current = select.value
+  select.innerHTML = '<option value="">Proje seçin...</option>' +
+    projects.map(p => `<option value="${p.project_name}" ${current === p.project_name ? 'selected' : ''}>${p.project_name}</option>`).join('')
+}
+
+function setLogFilter(f) {
+  activeLogFilter = f
+  document.getElementById('logs-filter-all').style.fontWeight = f === 'all' ? '600' : '400'
+  document.getElementById('logs-filter-er').style.fontWeight = f === 'er' ? '600' : '400'
+  document.getElementById('logs-filter-ok').style.fontWeight = f === 'ok' ? '600' : '400'
+  renderLogs()
+}
+
+function renderLogs() {
+  const b = document.getElementById('logs-body')
+  let lines = allLogLines
+  if (activeLogFilter !== 'all') {
+    lines = lines.filter(l => l.cls === activeLogFilter)
+  }
+  if (!lines.length) {
+    b.innerHTML = `<div class="log-empty"><div style="font-size:24px;margin-bottom:4px">🔍</div><div style="font-size:13px;font-weight:500;color:var(--text-2)">Log bulunamadı</div></div>`
+    return
+  }
+  b.innerHTML = lines.map(l => `
+    <div class="log-line">
+      <span class="log-level ${l.cls}">${l.cls === 'ok' ? 'INFO' : l.cls === 'er' ? 'ERROR' : l.cls === 'warn' ? 'WARN' : 'INFO'}</span>
+      <span class="log-msg ${l.cls}">${l.text}</span>
+    </div>
+  `).join('')
+  b.scrollTop = b.scrollHeight
+}
+
+async function loadLogs() {
+  const projName = document.getElementById('logs-proj-filter').value
+  const b = document.getElementById('logs-body')
+  if (!projName) {
+    b.innerHTML = `<div class="log-empty"><div style="font-size:24px;margin-bottom:4px">📋</div><div style="font-size:13px;font-weight:500;color:var(--text-2)">Proje seçin</div><div style="font-size:11.5px">Yukarıdan bir proje seçerek logları görüntüleyin</div></div>`
+    return
+  }
+  b.innerHTML = `<div class="log-empty"><div style="font-size:20px;margin-bottom:4px">⏳</div><div style="font-size:13px;color:var(--text-2)">Loglar yükleniyor...</div></div>`
+  try {
+    const r = await fetch(`http://localhost:5000/logs/${projName.toLowerCase()}`)
+    if (!r.ok) {
+      b.innerHTML = `<div class="log-empty"><div style="font-size:24px;margin-bottom:4px">📭</div><div style="font-size:13px;font-weight:500;color:var(--text-2)">Log bulunamadı</div><div style="font-size:11.5px">Bu proje için henüz log yok</div></div>`
+      return
+    }
+    const data = await r.json()
+    allLogLines = data.lines.map(line => {
+      let cls = 'inf'
+      if (line.startsWith('[+]') || line.includes('SUCCESS')) cls = 'ok'
+      else if (line.startsWith('[-]') || line.toLowerCase().includes('error')) cls = 'er'
+      else if (line.startsWith('[!]')) cls = 'warn'
+      return { cls, text: line }
+    })
+    renderLogs()
+  } catch {
+    b.innerHTML = `<div class="log-empty"><div style="font-size:24px;margin-bottom:4px">⚠️</div><div style="font-size:13px;color:var(--red)">Loglara ulaşılamadı</div></div>`
+  }
+}
+
+// ── GitHub ─────────────────────────────────────────────────
+async function checkGithubStatus() {
+  if (!localStorage.getItem('paas_token')) return
+  try {
+    const r=await af('http://localhost:8090/api/github/status'); if (!r.ok) return
+    const data=await r.json(), connected=data&&data.connected
+    githubConnected = !!connected
+    document.getElementById('sb-gh-connect').style.display=connected?'none':'flex'
+    document.getElementById('sb-gh-connected').style.display=connected?'flex':'none'
+  } catch {}
+}
+async function connectGitHub() {
+  try {
+    const r=await af('http://localhost:8090/api/github/login'); if (!r.ok) { toast('error','GitHub bağlantısı başlatılamadı'); return }
+    const data=await r.json(); if (data&&data.redirect_url) window.location.href=data.redirect_url
+  } catch { toast('error','Bağlantı hatası') }
+}
+async function disconnectGitHub() {
+  try {
+    const r=await af('http://localhost:8090/api/github/disconnect',{method:'DELETE'})
+    if (r.ok) { toast('success','GitHub bağlantısı kesildi'); checkGithubStatus() }
+  } catch {}
+}
+
+// ── Helpers ────────────────────────────────────────────────
+function shake(id) { const el=document.getElementById(id); el.classList.add('err'); setTimeout(()=>el.classList.remove('err'),1000) }
+function af(url,o={}) { o.headers=o.headers||{}; if(token)o.headers['Authorization']='Bearer '+token; return fetch(url,o) }
+function toast(type,msg) {
+  const c=document.getElementById('toasts'), el=document.createElement('div')
+  el.className='toast '+type
+  el.innerHTML=`<span>${type==='success'?'✓':'✕'}</span><span>${msg}</span>`
+  c.appendChild(el)
+  setTimeout(()=>{el.style.animation='sOut .18s ease forwards';setTimeout(()=>el.remove(),180)},3400)
+}
+</script>
+</body>
+</html>

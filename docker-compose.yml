@@ -1,5 +1,10 @@
 version: '3.8'
 
+# FAZ 6 degisiklikleri:
+#   - dashboard-service eklendi (Nginx — index.html serve eder)
+#   - auth-service volume mount auth-service/data -> app/data olarak kaldi
+#   - github-service/data/ altindaki deploy.db kalintisini elle sil
+
 services:
 
   # ── 1. TRAEFIK ────────────────────────────────────────────────
@@ -25,7 +30,23 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./traefik_dynamic.yml:/etc/traefik/dynamic.yml
 
-  # ── 2. AUTH SERVICE ───────────────────────────────────────────
+  # ── 2. DASHBOARD SERVICE ──────────────────────────────────────
+  # FAZ 6: Dashboard auth-service'den ayrıldı.
+  # Auth service down olsa bile dashboard erişilebilir kalır.
+  dashboard-service:
+    build: ./dashboard-service
+    container_name: paas_dashboard_ui
+    networks:
+      - paas-net
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+
+  # ── 3. AUTH SERVICE ───────────────────────────────────────────
   auth-service:
     env_file:
       - .env
@@ -45,7 +66,7 @@ services:
       start_period: 15s
     restart: unless-stopped
 
-  # ── 3. DEPLOY SERVICE ─────────────────────────────────────────
+  # ── 4. DEPLOY SERVICE ─────────────────────────────────────────
   deploy-service:
     env_file:
       - .env
@@ -72,7 +93,7 @@ services:
       start_period: 15s
     restart: unless-stopped
 
-  # ── 4. GITHUB SERVICE ─────────────────────────────────────────
+  # ── 5. GITHUB SERVICE ─────────────────────────────────────────
   github-service:
     env_file:
       - .env
@@ -98,7 +119,7 @@ services:
       start_period: 15s
     restart: unless-stopped
 
-  # ── 5. BUILDER SERVICE ────────────────────────────────────────
+  # ── 6. BUILDER SERVICE ────────────────────────────────────────
   builder-service:
     env_file:
       - .env
@@ -121,7 +142,7 @@ services:
       start_period: 15s
     restart: unless-stopped
 
-  # ── 6. PROMETHEUS ─────────────────────────────────────────────
+  # ── 7. PROMETHEUS ─────────────────────────────────────────────
   prometheus:
     image: prom/prometheus:latest
     container_name: paas_monitor
@@ -137,10 +158,10 @@ services:
       - "9090:9090"
     restart: unless-stopped
 
-  # ── 7. GRAFANA ────────────────────────────────────────────────
+  # ── 8. GRAFANA ────────────────────────────────────────────────
   grafana:
     image: grafana/grafana:latest
-    container_name: paas_dashboard
+    container_name: paas_grafana
     networks:
       - paas-net
     ports:
@@ -153,13 +174,13 @@ services:
       - GF_USERS_ALLOW_SIGN_UP=false
     restart: unless-stopped
 
-  # ── 8. NGROK ──────────────────────────────────────────────────
+  # ── 9. NGROK ──────────────────────────────────────────────────
   ngrok:
     image: ngrok/ngrok:latest
     container_name: paas_ngrok
     environment:
       - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
-    command: http --domain=${NGROK_DOMAIN} paas_github:8002 --log=stdout
+    command: http --domain=${NGROK_DOMAIN} github-service:8002 --log=stdout
     networks:
       - paas-net
     ports:

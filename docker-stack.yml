@@ -3,6 +3,11 @@ version: '3.8'
 # ─────────────────────────────────────────────────────────────────────────────
 # Mini PaaS — Docker Swarm Stack
 # Kullanim: docker stack deploy -c docker-stack.yml mini-paas
+# FAZ 6 degisiklikleri:
+#   - dashboard-service eklendi (Nginx — index.html serve eder)
+#   - auth-service'den StaticFiles mount kaldirildi
+#   - Tum SQLite database.py dosyalarinda WAL mode acildi
+#   - github-service/data/deploy.db kalintisi silindi
 # ─────────────────────────────────────────────────────────────────────────────
 
 secrets:
@@ -52,12 +57,28 @@ services:
         delay: 10s
         failure_action: rollback
 
-  # ── 2. AUTH SERVICE ───────────────────────────────────────────
+  # ── 2. DASHBOARD SERVICE ──────────────────────────────────────
+  # FAZ 6: Dashboard auth-service'den ayrıldı.
+  # Auth service down olsa bile dashboard erişilebilir kalır.
+  # index.html buradan kopyalanır; API istekleri Traefik üzerinden
+  # ilgili servislere yönlendirilir.
+  dashboard-service:
+    image: mini-paas/dashboard-service:latest
+    networks:
+      - paas-net
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+
+  # ── 3. AUTH SERVICE ───────────────────────────────────────────
   auth-service:
-    build: ./auth-service
-    # NOT: Swarm'da build desteklenmez; onceden image build edip push etmek gerekir.
-    # Simdilik gelistirme asamasinda docker-compose ile build, stack ile deploy yapilabilir.
-    # Veya: image: localhost:5001/auth-service:latest (local registry ile)
     image: mini-paas/auth-service:latest
     networks:
       - paas-net
@@ -76,8 +97,10 @@ services:
       retries: 3
       start_period: 15s
     deploy:
-      # FAZ 4: SQLite dosyası her replica'da ayrı olduğundan replicas=1 zorunlu.
-      # Çözüm: Faz 5'te PostgreSQL'e geçince replicas artırılabilir.
+      # FAZ 6: WAL mode açıldı (database.py). SQLite WAL ile tek node'da
+      # eş zamanlı bağlantılar güvenli. Replicas=2 test edilebilir ama
+      # named volume tek node'a bağlı olduğu için Swarm HA için
+      # hâlâ PostgreSQL gerekir. Şimdilik replicas=1.
       replicas: 1
       restart_policy:
         condition: on-failure
@@ -88,7 +111,7 @@ services:
         delay: 10s
         failure_action: rollback
 
-  # ── 3. DEPLOY SERVICE ─────────────────────────────────────────
+  # ── 4. DEPLOY SERVICE ─────────────────────────────────────────
   deploy-service:
     image: mini-paas/deploy-service:latest
     networks:
@@ -114,8 +137,6 @@ services:
       retries: 3
       start_period: 15s
     deploy:
-      # FAZ 4: SQLite dosyası her replica'da ayrı olduğundan replicas=1 zorunlu.
-      # Çözüm: Faz 5'te PostgreSQL'e geçince replicas artırılabilir.
       replicas: 1
       restart_policy:
         condition: on-failure
@@ -126,7 +147,7 @@ services:
         delay: 10s
         failure_action: rollback
 
-  # ── 4. GITHUB SERVICE ─────────────────────────────────────────
+  # ── 5. GITHUB SERVICE ─────────────────────────────────────────
   github-service:
     image: mini-paas/github-service:latest
     networks:
@@ -152,8 +173,6 @@ services:
       retries: 3
       start_period: 15s
     deploy:
-      # FAZ 4: SQLite dosyası her replica'da ayrı olduğundan replicas=1 zorunlu.
-      # Çözüm: Faz 5'te PostgreSQL'e geçince replicas artırılabilir.
       replicas: 1
       restart_policy:
         condition: on-failure
@@ -164,9 +183,7 @@ services:
         delay: 10s
         failure_action: rollback
 
-  # ── 5. BUILDER SERVICE ────────────────────────────────────────
-  # replicas: 1 — Docker socket erisimi ve traefik_dynamic.yml yazma
-  # islemi tek node'da olmali; birden fazla replica race condition olusturur.
+  # ── 6. BUILDER SERVICE ────────────────────────────────────────
   builder-service:
     image: mini-paas/builder-service:latest
     ports:
@@ -198,9 +215,7 @@ services:
         delay: 10s
         failure_action: rollback
 
-  # ── 6. REDIS ──────────────────────────────────────────────────
-  # Circuit breaker state ve token cache icin.
-  # deploy-service ve github-service bu servisi kullanir.
+  # ── 7. REDIS ──────────────────────────────────────────────────
   redis:
     image: redis:7-alpine
     networks:
@@ -225,7 +240,7 @@ services:
         delay: 10s
         failure_action: rollback
 
-  # ── 7. PROMETHEUS ─────────────────────────────────────────────
+  # ── 8. PROMETHEUS ─────────────────────────────────────────────
   prometheus:
     image: prom/prometheus:latest
     volumes:
@@ -249,7 +264,7 @@ services:
         delay: 10s
         failure_action: rollback
 
-  # ── 8. GRAFANA ────────────────────────────────────────────────
+  # ── 9. GRAFANA ────────────────────────────────────────────────
   grafana:
     image: grafana/grafana:latest
     networks:
@@ -273,7 +288,7 @@ services:
         delay: 10s
         failure_action: rollback
 
-# ── 9. NGROK ──────────────────────────────────────────────────
+  # ── 10. NGROK ─────────────────────────────────────────────────
   ngrok:
     image: ngrok/ngrok:latest
     environment:
@@ -303,5 +318,4 @@ networks:
   paas-net:
     driver: overlay
     attachable: true
-    # attachable: true olmali — builder deploy edilen app container'larini
-    # bu ag'a bagliyor. Olmasa app container'lari Traefik'e ulasalamaz.
+

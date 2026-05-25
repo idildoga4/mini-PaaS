@@ -3,9 +3,15 @@ import os
 
 DB_PATH = "data/deploy.db"
 
+
 def init_db():
     os.makedirs("data", exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
+
+    # FAZ 6: WAL mode — eş zamanlı okuma/yazma güvenli hale gelir.
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+
     c = conn.cursor()
 
     # Projeler tablosu — her proje bir kez oluşturulur
@@ -21,7 +27,6 @@ def init_db():
     """)
 
     # Deployment'lar tablosu — her deploy için bir kayıt
-    # FAZ 4 A.2: container_name kolonu eklendi (kullanıcı-proje bazlı benzersiz ad)
     c.execute("""
         CREATE TABLE IF NOT EXISTS deployments (
             id             INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -32,16 +37,14 @@ def init_db():
             port           INTEGER,
             subdomain      TEXT,
             container_name TEXT,
+            error_message  TEXT,
             created_at     TEXT NOT NULL
         )
     """)
 
     conn.commit()
 
-    # ── Mevcut veritabanı migration (tek seferlik, güvenli) ──────────────────
-    # Eski deploy.db dosyaları container_name kolonuna sahip olmayabilir.
-    # ALTER TABLE IF NOT EXISTS kolonu SQLite'ta desteklenmediği için
-    # PRAGMA table_info ile kontrol edip ekliyoruz.
+    # Mevcut veritabanı migration (idempotent)
     _migrate(conn)
 
     conn.close()
@@ -54,7 +57,6 @@ def _migrate(conn):
     """
     c = conn.cursor()
 
-    # deployments tablosundaki mevcut kolonları öğren
     c.execute("PRAGMA table_info(deployments)")
     existing_cols = {row[1] for row in c.fetchall()}
 
@@ -70,8 +72,9 @@ def _migrate(conn):
 
 
 def get_connection():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
     return conn
 
 
@@ -80,13 +83,7 @@ def upsert_project(conn, user_email: str, project_name: str, github_url: str,
                    container_name: str = "") -> int:
     """
     Push-to-deploy akışında projects tablosuna kayıt oluşturur ya da günceller.
-
-    • Proje yoksa → INSERT (push ile ilk kez görülen proje)
-    • Proje varsa → github_url güncelle (repo değişmiş olabilir)
-
-    Bu fix sayesinde push-to-deploy ile gelen deploy'lar Projects
-    sayfasında görünür hale gelir.
-
+    Proje yoksa INSERT, varsa github_url günceller.
     Dönüş: projects satırının id değeri
     """
     cursor = conn.cursor()
@@ -111,11 +108,7 @@ def upsert_project(conn, user_email: str, project_name: str, github_url: str,
     else:
         project_id = row[0]
         cursor.execute(
-            """
-            UPDATE projects
-            SET github_url = ?
-            WHERE id = ?
-            """,
+            "UPDATE projects SET github_url = ? WHERE id = ?",
             (github_url, project_id)
         )
         conn.commit()

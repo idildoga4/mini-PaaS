@@ -12,7 +12,7 @@ http:
       - web
       priority: 1
       rule: Host(`localhost`)
-      service: auth-service
+      service: dashboard-service
     deploy-router:
       entryPoints:
       - web
@@ -62,6 +62,10 @@ http:
       loadBalancer:
         servers:
         - url: http://auth-service:8001
+    dashboard-service:
+      loadBalancer:
+        servers:
+        - url: http://dashboard-service:80
     deploy-service:
       loadBalancer:
         servers:
