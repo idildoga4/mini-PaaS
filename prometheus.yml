@@ -1,40 +1,28 @@
-global:
+﻿global:
   scrape_interval: 15s
   evaluation_interval: 15s
-
 scrape_configs:
-
-  # Traefik — HTTP request sayilari, latency, router metrikleri
   - job_name: 'traefik'
     static_configs:
       - targets: ['traefik:8080']
     metrics_path: /metrics
-
-  # Deploy Service — deploy_total, build_duration
   - job_name: 'deploy-service'
     static_configs:
       - targets: ['deploy-service:8003']
     metrics_path: /metrics
-
-  # Auth Service — auth_verify_duration, circuit_breaker_state
   - job_name: 'auth-service'
     static_configs:
       - targets: ['auth-service:8001']
     metrics_path: /metrics
-
-  # Builder Service — active_builds
   - job_name: 'builder-service'
     static_configs:
       - targets: ['builder-service:5000']
     metrics_path: /metrics
-
-  # GitHub Service
   - job_name: 'github-service'
     static_configs:
       - targets: ['github-service:8002']
     metrics_path: /metrics
-
-  # Prometheus kendini izliyor
   - job_name: 'prometheus'
     static_configs:
       - targets: ['localhost:9090']
+    metrics_path: /metrics

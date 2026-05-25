@@ -241,9 +241,15 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
-          "expr": "circuit_breaker_state",
-          "legendFormat": "Durum",
+          "expr": "circuit_breaker_state{service=\"deploy-service\"}",
+          "legendFormat": "deploy-service",
           "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "expr": "circuit_breaker_state{service=\"github-service\"}",
+          "legendFormat": "github-service",
+          "refId": "B"
         }
       ]
     }

@@ -1,145 +1,121 @@
-# circuit_breaker.py
-# deploy-service ve github-service klasörlerine kopyala.
+"""
+circuit_breaker.py — github-service
+Faz 6 değişikliği: State geçişlerinde circuit_breaker_state Gauge güncelleniyor.
+  CLOSED → gauge.set(0)
+  OPEN   → gauge.set(1)
+"""
 
 import hashlib
-import os
 import httpx
-import redis as redis_lib
+import redis
+from prometheus_client import Gauge
 
-from fastapi import HTTPException
+# ─── Prometheus Gauge ───────────────────────────────────────────────────────
+circuit_breaker_state = Gauge(
+    "circuit_breaker_state",
+    "Circuit breaker state: 0=CLOSED, 1=OPEN",
+    ["service"],
+)
 
-REDIS_URL        = os.getenv("REDIS_URL", "redis://redis:6379")
-CIRCUIT_KEY      = "circuit:auth_service"
-FAIL_COUNT_KEY   = "circuit:auth_fail_count"
-TOKEN_TTL        = 60    # saniye
-CIRCUIT_OPEN_TTL = 30    # saniye
-FAIL_THRESHOLD   = 3
+circuit_breaker_state.labels(service="github-service").set(0)
 
-# Modül yüklenince bir kez bağlantı kur, tekrar kullan
-_redis = None
+# ─── Redis bağlantısı ────────────────────────────────────────────────────────
+_redis: redis.Redis | None = None
 
-def get_redis():
+
+def get_redis() -> redis.Redis:
     global _redis
-    if _redis is not None:
-        try:
-            _redis.ping()
-            return _redis
-        except Exception:
-            _redis = None
-    try:
-        r = redis_lib.from_url(
-            REDIS_URL,
-            socket_connect_timeout=1,
-            socket_timeout=1,
-            decode_responses=True
-        )
-        r.ping()
-        _redis = r
-        return _redis
-    except Exception:
-        return None
+    if _redis is None:
+        _redis = redis.Redis(host="redis", port=6379, db=0, decode_responses=True)
+    return _redis
 
 
-def _token_key(token: str) -> str:
-    return "token:" + hashlib.sha256(token.encode()).hexdigest()[:32]
+# ─── Sabitler ────────────────────────────────────────────────────────────────
+CACHE_TTL         = 60
+CIRCUIT_OPEN_TTL  = 30
+FAILURE_THRESHOLD = 3
+AUTH_SERVICE_URL  = "http://auth-service:8001"
+HTTP_TIMEOUT      = 3.0
+
+def _cache_key(token: str) -> str:
+    h = hashlib.sha256(token.encode()).hexdigest()[:32]
+    return f"token_cache:{h}"
+
+CB_STATE_KEY   = "cb:github-service:state"
+CB_FAILURE_KEY = "cb:github-service:failures"
 
 
-async def verify_token_with_circuit_breaker(token: str, auth_service_url: str) -> str:
+# ─── Circuit state yardımcıları ──────────────────────────────────────────────
+def _is_open(r: redis.Redis) -> bool:
+    return r.exists(CB_STATE_KEY) == 1
+
+
+def _set_open(r: redis.Redis) -> None:
+    r.setex(CB_STATE_KEY, CIRCUIT_OPEN_TTL, "open")
+    circuit_breaker_state.labels(service="github-service").set(1)
+
+
+def _set_closed(r: redis.Redis) -> None:
+    r.delete(CB_STATE_KEY)
+    r.delete(CB_FAILURE_KEY)
+    circuit_breaker_state.labels(service="github-service").set(0)
+
+
+def _increment_failure(r: redis.Redis) -> int:
+    count = r.incr(CB_FAILURE_KEY)
+    r.expire(CB_FAILURE_KEY, CIRCUIT_OPEN_TTL * 2)
+    return count
+
+
+# ─── Ana doğrulama fonksiyonu ─────────────────────────────────────────────────
+async def verify_token_with_circuit_breaker(token: str) -> str | None:
     """
-    Token doğrulama — Redis cache + circuit breaker.
-
-    Akış:
-    1. Redis cache hit → direkt dön (Auth Service'e gitme)
-    2. Circuit 'open' → 503 dön
-    3. Auth Service'e istek at (timeout: 3sn)
-       - Başarılı → cache'e yaz, fail sıfırla
-       - Hata → fail artır, eşik aşıldıysa circuit aç
-    4. Redis yoksa → Auth Service'e direkt git
+    Token doğrulama — cache → circuit breaker → auth-service sırası.
+    Redis erişilemezse fallback olarak doğrudan Auth Service'e git.
     """
-    r = get_redis()
-
-    # ── FALLBACK: Redis erişilemiyorsa direkt Auth Service ────────────────────
-    if r is None:
-        return await _direct_auth(token, auth_service_url)
-
-    key = _token_key(token)
-
-    # ── 1. Cache kontrolü ─────────────────────────────────────────────────────
     try:
-        cached = r.get(key)
+        r = get_redis()
+
+        cache_key = _cache_key(token)
+        cached = r.get(cache_key)
         if cached:
-            print(f"[circuit-breaker] Cache HIT → {cached}")
             return cached
-    except Exception as e:
-        print(f"[circuit-breaker] Cache okuma hatası: {e}")
 
-    # ── 2. Circuit breaker kontrolü ───────────────────────────────────────────
-    try:
-        state = r.get(CIRCUIT_KEY)
-        if state == "open":
-            print("[circuit-breaker] Circuit OPEN → 503")
-            raise HTTPException(
-                status_code=503,
-                detail="Auth Service geçici olarak kullanılamıyor. Lütfen kısa süre sonra tekrar deneyin."
-            )
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"[circuit-breaker] Circuit state okuma hatası: {e}")
+        if _is_open(r):
+            return None
 
-    # ── 3. Auth Service'e istek ───────────────────────────────────────────────
-    try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{auth_service_url}/api/auth/verify",
-                headers={"Authorization": f"Bearer {token}"},
-                timeout=3  # 5sn → 3sn, Traefik timeout'undan önce bitsin
-            )
-
-        if resp.status_code == 200:
-            email = resp.json()["email"]
-            try:
-                r.setex(key, TOKEN_TTL, email)
-                r.delete(FAIL_COUNT_KEY)
-                r.delete(CIRCUIT_KEY)
-            except Exception:
-                pass
-            return email
-
-        # 401/403: token geçersiz, circuit açma
-        raise HTTPException(status_code=401, detail="Token geçersiz")
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        # Network hatası veya timeout → fail sayacını artır
-        print(f"[circuit-breaker] Auth Service hatası: {e}")
         try:
-            count = r.incr(FAIL_COUNT_KEY)
-            r.expire(FAIL_COUNT_KEY, CIRCUIT_OPEN_TTL * 2)
-            print(f"[circuit-breaker] Fail count: {count}/{FAIL_THRESHOLD}")
+            async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+                resp = await client.get(
+                    f"{AUTH_SERVICE_URL}/api/auth/verify",
+                    headers={"Authorization": f"Bearer {token}"},
+                )
+            if resp.status_code == 200:
+                email = resp.json().get("email")
+                if email:
+                    r.setex(cache_key, CACHE_TTL, email)
+                    _set_closed(r)
+                    return email
+            count = _increment_failure(r)
+            if count >= FAILURE_THRESHOLD:
+                _set_open(r)
+            return None
 
-            if count >= FAIL_THRESHOLD:
-                r.setex(CIRCUIT_KEY, CIRCUIT_OPEN_TTL, "open")
-                r.delete(FAIL_COUNT_KEY)
-                print("[circuit-breaker] Circuit AÇILDI — 30sn sonra half-open")
+        except (httpx.RequestError, httpx.TimeoutException):
+            count = _increment_failure(r)
+            if count >= FAILURE_THRESHOLD:
+                _set_open(r)
+            return None
+
+    except redis.RedisError:
+        try:
+            async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+                resp = await client.get(
+                    f"{AUTH_SERVICE_URL}/api/auth/verify",
+                    headers={"Authorization": f"Bearer {token}"},
+                )
+            if resp.status_code == 200:
+                return resp.json().get("email")
         except Exception:
             pass
-
-        raise HTTPException(status_code=503, detail="Auth Service'e ulaşılamıyor")
-
-
-async def _direct_auth(token: str, auth_service_url: str) -> str:
-    """Redis yokken doğrudan Auth Service çağrısı."""
-    try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{auth_service_url}/api/auth/verify",
-                headers={"Authorization": f"Bearer {token}"},
-                timeout=3
-            )
-            if resp.status_code == 200:
-                return resp.json()["email"]
-    except Exception:
-        pass
-    raise HTTPException(status_code=401, detail="Token geçersiz")
+        return None

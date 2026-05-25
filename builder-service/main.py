@@ -238,10 +238,13 @@ async def container_status(container_name: str):
     try:
         result = await asyncio.to_thread(
             subprocess.run,
-            ["docker", "ps", "-q", "-f", f"name={container_name}"],
+            ["docker", "ps", "--filter", f"name={container_name}", "--format", "{{.Names}}"],
             capture_output=True, text=True, timeout=10
         )
-        running = bool(result.stdout.strip())
+        # Tam isim eşleşmesi: docker ps --filter name= kısmi eşleşme yapıyor.
+        # Örneğin "app-test" filtresi "app-test-2" container'ını da döndürür.
+        running_names = result.stdout.strip().splitlines()
+        running = any(c == container_name for c in running_names)
     except subprocess.TimeoutExpired:
         service_logger.warning(f"[container-status] docker ps timeout: {container_name}")
         raise HTTPException(status_code=504, detail="docker ps timeout")
