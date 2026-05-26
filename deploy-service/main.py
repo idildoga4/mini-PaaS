@@ -14,6 +14,8 @@ import requests as http_requests
 import httpx, re, os, asyncio
 from secrets_helper import get_secret   # FAZ 4 A.3
 from prometheus_client import Counter, Histogram, make_asgi_app
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+from fastapi import Response
 
 # --- LOGGING & TRACE ID KURULUMU ---
 trace_id_var = contextvars.ContextVar("trace_id", default='no-trace')
@@ -585,4 +587,8 @@ async def health():
     except Exception as e:
         return {"status": "error", "detail": str(e)}
 # FAZ 5 B.1: Prometheus metrics endpoint
-app.mount('/metrics', make_asgi_app())
+
+@app.get("/metrics")
+async def metrics():
+    """Prometheus kazıma işlemlerinin yönlendirmeye takılmadan direkt 200 OK dönmesini sağlar."""
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)

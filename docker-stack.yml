@@ -58,10 +58,6 @@ services:
         failure_action: rollback
 
   # ── 2. DASHBOARD SERVICE ──────────────────────────────────────
-  # FAZ 6: Dashboard auth-service'den ayrıldı.
-  # Auth service down olsa bile dashboard erişilebilir kalır.
-  # index.html buradan kopyalanır; API istekleri Traefik üzerinden
-  # ilgili servislere yönlendirilir.
   dashboard-service:
     image: mini-paas/dashboard-service:latest
     networks:
@@ -97,10 +93,6 @@ services:
       retries: 3
       start_period: 15s
     deploy:
-      # FAZ 6: WAL mode açıldı (database.py). SQLite WAL ile tek node'da
-      # eş zamanlı bağlantılar güvenli. Replicas=2 test edilebilir ama
-      # named volume tek node'a bağlı olduğu için Swarm HA için
-      # hâlâ PostgreSQL gerekir. Şimdilik replicas=1.
       replicas: 1
       restart_policy:
         condition: on-failure
@@ -294,7 +286,7 @@ services:
     environment:
       - NGROK_AUTHTOKEN=3DSEH3EIPUyhhN5wdOr3v9ToGq8_2gkosq4GRkQ7qWj1vRBCq
       - NGROK_DOMAIN=capture-glove-matcher.ngrok-free.dev
-    command: http --url=capture-glove-matcher.ngrok-free.dev github-service:8002 --log=stdout
+    command: http --url=capture-glove-matcher.ngrok-free.dev --pooling-enabled=true github-service:8002 --log=stdout
     networks:
       - paas-net
     ports:
@@ -305,6 +297,11 @@ services:
         condition: on-failure
         delay: 5s
         max_attempts: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+        order: stop-first
 
 volumes:
   prometheus-data:
@@ -318,4 +315,3 @@ networks:
   paas-net:
     driver: overlay
     attachable: true
-

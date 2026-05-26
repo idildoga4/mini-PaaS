@@ -72,10 +72,6 @@
           {
             "matcher": { "id": "byName", "options": "failed" },
             "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }]
-          },
-          {
-            "matcher": { "id": "byName", "options": "running" },
-            "properties": [{ "id": "color", "value": { "fixedColor": "blue", "mode": "fixed" } }]
           }
         ]
       },
@@ -88,7 +84,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
-          "expr": "sum by(status)(deploy_total)",
+          "expr": "sum by(status)(deploy_total{status!=\"running\"})",
           "legendFormat": "{{status}}",
           "refId": "A"
         }
@@ -96,32 +92,32 @@
     },
     {
       "id": 3,
-      "title": "Son 1 Saatteki Deploy Hızı",
+      "title": "Son 1 Saatteki Deploy Eğilimi (Artış)",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
-          "unit": "ops",
+          "unit": "short",
           "custom": {
             "lineWidth": 2,
-            "fillOpacity": 10,
+            "fillOpacity": 15,
             "spanNulls": false,
-            "showPoints": "never"
+            "showPoints": "auto"
           },
           "mappings": []
         },
         "overrides": []
       },
       "options": {
-        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom" },
+        "legend": { "calcs": ["max"], "displayMode": "table", "placement": "bottom" },
         "tooltip": { "mode": "multi", "sort": "none" }
       },
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
-          "expr": "rate(deploy_total[5m])",
+          "expr": "increase(deploy_total[1h])",
           "legendFormat": "{{status}}",
           "refId": "A"
         }
@@ -129,7 +125,7 @@
     },
     {
       "id": 4,
-      "title": "Aktif Build Sayısı",
+      "title": "Aktif Build Sayısı (Son Bilinen)",
       "type": "gauge",
       "gridPos": { "h": 4, "w": 4, "x": 0, "y": 4 },
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
@@ -163,86 +159,6 @@
           "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
           "expr": "active_builds",
           "legendFormat": "Aktif Build",
-          "refId": "A"
-        }
-      ]
-    },
-    {
-      "id": 5,
-      "title": "Auth Verify Ortalama Süre (ms)",
-      "type": "stat",
-      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 8 },
-      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "thresholds" },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 100 },
-              { "color": "red", "value": 500 }
-            ]
-          },
-          "unit": "ms",
-          "decimals": 2,
-          "mappings": []
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "textMode": "auto"
-      },
-      "targets": [
-        {
-          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
-          "expr": "rate(auth_verify_duration_seconds_sum[5m]) / rate(auth_verify_duration_seconds_count[5m]) * 1000",
-          "legendFormat": "Ortalama Süre",
-          "refId": "A"
-        }
-      ]
-    },
-    {
-      "id": 6,
-      "title": "Circuit Breaker Durumu",
-      "type": "stat",
-      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 8 },
-      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "thresholds" },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "green", "value": null },
-              { "color": "red", "value": 1 }
-            ]
-          },
-          "unit": "short",
-          "mappings": [
-            { "options": { "0": { "text": "CLOSED ✓" }, "1": { "text": "OPEN ✗" } }, "type": "value" }
-          ]
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "textMode": "auto"
-      },
-      "targets": [
-        {
-          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
-          "expr": "circuit_breaker_state",
-          "legendFormat": "Durum",
           "refId": "A"
         }
       ]
