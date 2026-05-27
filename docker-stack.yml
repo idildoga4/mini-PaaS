@@ -289,9 +289,8 @@ services:
   ngrok:
     image: ngrok/ngrok:latest
     environment:
-      - NGROK_AUTHTOKEN=3DSEH3EIPUyhhN5wdOr3v9ToGq8_2gkosq4GRkQ7qWj1vRBCq
-      - NGROK_DOMAIN=capture-glove-matcher.ngrok-free.dev
-    command: http --url=capture-glove-matcher.ngrok-free.dev --pooling-enabled=true github-service:8002 --log=stdout
+      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
+    command: http --url=${NGROK_DOMAIN} --pooling-enabled=true github-service:8002 --log=stdout
     networks:
       - paas-net
     ports:
