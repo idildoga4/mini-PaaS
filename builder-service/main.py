@@ -1,6 +1,7 @@
 import uuid
 import contextvars
 import logging
+import time  # <-- Yeni eklenen kütüphane
 from pythonjsonlogger import jsonlogger
 from fastapi import FastAPI, BackgroundTasks, WebSocket, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,6 +12,7 @@ import asyncio, os, re, subprocess, requests
 from git_manager import clone_repo
 from docker_manager import build_and_deploy
 from prometheus_client import Gauge, make_asgi_app
+
 trace_id_var = contextvars.ContextVar("trace_id", default='no-trace')
 
 class TraceIdFilter(logging.Filter):
@@ -36,6 +38,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 @app.middleware("http")
 async def trace_middleware(request: Request, call_next):
     trace_id = request.headers.get("X-Trace-Id", str(uuid.uuid4())[:8])
@@ -56,9 +59,6 @@ class DeployRequest(BaseModel):
     repo_url:     str
     project_name: str
     github_token: str    = ""
-    # FAZ 4 A.2: kullanıcı bazlı benzersiz container adı ve subdomain
-    # deploy-service tarafından hesaplanıp gönderilir.
-    # Boş gelirse eski davranışa (app-{project}) geri düşer — geriye uyumluluk.
     container_name: Optional[str] = ""
     subdomain:      Optional[str] = ""
 
@@ -70,19 +70,39 @@ class DeployRequest(BaseModel):
             raise ValueError(f"Geçersiz repo URL'si: '{url}'")
         return url
 
-# ─── Pipeline ─────────────────────────────────────────────────
+# ─── Healthcheck (Yeni) ───────────────────────────────────────
+def wait_for_health(subdomain: str, timeout_seconds: int = 40) -> bool:
+    """
+    Traefik üzerinden uygulamanın gerçekten HTTP yanıtı verip vermediğini kontrol eder.
+    """
+    url = "http://traefik:80"
+    headers = {"Host": f"{subdomain}.localhost"}
+    
+    start_time = time.time()
+    while time.time() - start_time < timeout_seconds:
+        try:
+            res = requests.get(url, headers=headers, timeout=2)
+            
+            if res.status_code not in (502, 503, 404):
+                return True
+        except requests.RequestException:
+            pass
+        
+        time.sleep(2)
+    
+    return False
+
+# ─── Pipeline (Güncellendi) ───────────────────────────────────
 def run_pipeline(deploy_id: int, repo_url: str, project_name: str,
                  github_token: str = "", container_name: str = "", subdomain: str = ""):
-    # project_name build için temizle (image adı olarak kullanılacak)
+    
     clean_name = re.sub(r'[^a-z0-9-]', '-', project_name.lower().strip()).strip('-')
     clean_name = re.sub(r'-+', '-', clean_name)
 
-    # FAZ 4 A.2: container_name gelmemişse eski davranışa geri dön
     if not container_name:
         container_name = f"app-{clean_name}"
         service_logger.info(f"[builder] container_name gelmedi, fallback: {container_name}")
 
-    # FAZ 4 A.2: subdomain gelmemişse proje adından türet
     if not subdomain:
         subdomain = clean_name
         service_logger.info(f"[builder] subdomain gelmedi, fallback: {subdomain}")
@@ -91,10 +111,22 @@ def run_pipeline(deploy_id: int, repo_url: str, project_name: str,
     status = "Failed"
 
     if project_path:
-        # FAZ 4 A.2: container_name ve subdomain build_and_deploy'a iletiliyor
         success = build_and_deploy(project_path, clean_name, container_name, subdomain)
         if success:
-            status = "Running"
+            service_logger.info(f"[builder] Konteyner başlatıldı. Healthcheck bekleniyor: {subdomain}.localhost")
+            
+            # Konteyner ayağa kalktıktan sonra 40 saniye boyunca uygulamanın uyanmasını bekle
+            is_healthy = wait_for_health(subdomain, timeout_seconds=40)
+            
+            if is_healthy:
+                status = "Running"
+                service_logger.info(f"[builder] Healthcheck BAŞARILI! Uygulama yayında: {subdomain}")
+            else:
+                status = "Failed"
+                service_logger.error(f"[builder] Healthcheck BAŞARISIZ! Uygulama çöktü veya zaman aşımı: {subdomain}")
+                
+                # Bozuk kodu barındıran konteyneri arkamızda çöp olarak bırakmamak için hemen temizle!
+                subprocess.run(["docker", "rm", "-f", container_name], capture_output=True)
 
     # Webhook: Deploy Service'e sonucu bildir
     try:
@@ -148,9 +180,6 @@ async def deploy_project(req: DeployRequest, background_tasks: BackgroundTasks):
 
     async def pipeline_wrapper():
         try:
-            # asyncio.to_thread: run_pipeline senkron ve uzun süren bir fonksiyon
-            # (git clone + docker build). await olmadan çağrılırsa event loop bloklanır;
-            # WebSocket, /health ve diğer endpoint'ler yanıt veremez hale gelir.
             await asyncio.to_thread(
                 run_pipeline,
                 req.deploy_id,
@@ -228,11 +257,6 @@ async def stop_container(data: dict):
 
 @app.get("/container-status")
 async def container_status(container_name: str):
-    """
-    B.2 Orphan check: deploy-service startup'ta bu endpoint'i cagirir.
-    Docker socket builder-service'te oldugu icin kontrol buradan yapilir.
-    Donus: {"running": true/false}
-    """
     if not container_name:
         raise HTTPException(status_code=400, detail="container_name gerekli")
     try:
