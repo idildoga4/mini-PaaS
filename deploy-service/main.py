@@ -60,7 +60,7 @@ HTTP_REQUEST_DURATION = Histogram(
     ['method', 'endpoint', 'status_code']
 )
 
-DEPLOY_ERROR_TOTAL = Counter(
+deploy_error_total = Counter(
     'deploy_error_total',
     'Total number of deployment errors by type',
     ['error_type', 'project_name']
@@ -240,7 +240,7 @@ def trigger_builder(deploy_id: int, github_url: str, project_name: str,
             conn.execute("UPDATE deployments SET status='Failed' WHERE id=?", (deploy_id,))
             conn.commit()
             conn.close()
-            DEPLOY_ERROR_TOTAL.labels(error_type='parallel_build_conflict', project_name=project_name).inc()
+            deploy_error_total.labels(error_type='parallel_build_conflict', project_name=project_name).inc()
             status_label = "failed"
             print("[Deploy Service] Paralel build engellendi")
             return
@@ -249,7 +249,7 @@ def trigger_builder(deploy_id: int, github_url: str, project_name: str,
         
     except http_requests.Timeout:
         service_logger.error("[Deploy Service] Builder zaman aşımı")
-        DEPLOY_ERROR_TOTAL.labels(error_type='timeout', project_name=project_name).inc()
+        deploy_error_total.labels(error_type='timeout', project_name=project_name).inc()
         status_label = "failed"
         conn = get_connection()
         conn.execute("UPDATE deployments SET status='Failed' WHERE id=?", (deploy_id,))
@@ -257,7 +257,7 @@ def trigger_builder(deploy_id: int, github_url: str, project_name: str,
         conn.close()
     except http_requests.ConnectionError:
         service_logger.error("[Deploy Service] Builder bağlantı hatası")
-        DEPLOY_ERROR_TOTAL.labels(error_type='connection_error', project_name=project_name).inc()
+        deploy_error_total.labels(error_type='connection_error', project_name=project_name).inc()
         status_label = "failed"
         conn = get_connection()
         conn.execute("UPDATE deployments SET status='Failed' WHERE id=?", (deploy_id,))
@@ -265,7 +265,7 @@ def trigger_builder(deploy_id: int, github_url: str, project_name: str,
         conn.close()
     except Exception as e:
         service_logger.error(f"[Deploy Service] Builder ulaşılamadı: {e}")
-        DEPLOY_ERROR_TOTAL.labels(error_type='unknown', project_name=project_name).inc()
+        deploy_error_total.labels(error_type='unknown', project_name=project_name).inc()
         status_label = "failed"
         conn = get_connection()
         conn.execute("UPDATE deployments SET status='Failed' WHERE id=?", (deploy_id,))
@@ -443,10 +443,20 @@ async def webhook(req: WebhookRequest):
     )
     conn.commit()
     conn.close()
+    
     if req.status == "Running":
         deploy_total.labels(status='success').inc()
     else:
         deploy_total.labels(status='failed').inc()
+        
+        # --- EKLENEN YENİ KISIM BAŞLANGICI ---
+        # Subdomain "projem.localhost" formatında geldiği için ilk kısmını alıp proje adını buluyoruz
+        project_name = req.subdomain.split('.')[0] if req.subdomain else "bilinmeyen"
+        
+        # Grafana'daki "Hata Kırılımı (Deploy Error)" panelini dolduracak asıl tetikleyici
+        deploy_error_total.labels(error_type="healthcheck_failed", project_name=project_name).inc()
+        # --- EKLENEN YENİ KISIM BİTİŞİ ---
+        
     service_logger.info(f"[Deploy Service] Deploy #{req.deploy_id} → {req.status}")
     return {"message": "Güncellendi"}
 
