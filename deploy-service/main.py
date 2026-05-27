@@ -3,6 +3,7 @@
 import uuid
 import contextvars
 import logging
+import time
 from pythonjsonlogger import jsonlogger
 from fastapi import FastAPI, BackgroundTasks, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -43,8 +44,28 @@ SECRET_KEY = get_secret("jwt_secret", "JWT_SECRET")
 ALGORITHM  = "HS256"
 
 bearer = HTTPBearer()
+
+# --- PROMETHEUS METRİKLERİ ---
 deploy_total = Counter('deploy_total', 'Deploy sayisi', ['status'])
-build_duration = Histogram('build_duration_seconds', 'Build suresi')
+
+DEPLOY_DURATION = Histogram(
+    'deploy_duration_seconds',
+    'Time spent during the deployment trigger process',
+    ['project_name', 'status']
+)
+
+HTTP_REQUEST_DURATION = Histogram(
+    'http_request_duration_seconds',
+    'HTTP request duration in seconds',
+    ['method', 'endpoint', 'status_code']
+)
+
+DEPLOY_ERROR_TOTAL = Counter(
+    'deploy_error_total',
+    'Total number of deployment errors by type',
+    ['error_type', 'project_name']
+)
+# -----------------------------
 
 app = FastAPI(title="Deploy Service")
 
@@ -52,11 +73,32 @@ os.makedirs("data", exist_ok=True)
 init_db()
 
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+# --- ORTAK MİDDLEWARE (Trace ID ve HTTP Metrikleri) ---
 @app.middleware("http")
-async def trace_middleware(request: Request, call_next):
+async def main_middleware(request: Request, call_next):
+    # 1. Trace ID Ayarla
     trace_id = request.headers.get("X-Trace-Id", str(uuid.uuid4())[:8])
     token = trace_id_var.set(trace_id)
+    
+    # 2. Metrik İçin Süreyi Başlat
+    start_time = time.time()
     response = await call_next(request)
+    duration = time.time() - start_time
+    
+    # 3. URL'leri Temizle (ID'leri gruplayarak PromQL'in şişmesini engelleriz)
+    path = request.url.path
+    path = re.sub(r'/[0-9]+', '/{id}', path)
+    path = re.sub(r'/projects/[^/]+(/redeploy)?', r'/projects/{project_name}\1', path)
+    
+    # 4. Metriği Kaydet
+    HTTP_REQUEST_DURATION.labels(
+        method=request.method,
+        endpoint=path,
+        status_code=response.status_code
+    ).observe(duration)
+    
+    # 5. Temizlik ve Dönüş
     response.headers["X-Trace-Id"] = trace_id
     trace_id_var.reset(token)
     return response
@@ -82,24 +124,16 @@ async def orphan_container_check():
         deployment_id  = row["id"]
         container_name = row["container_name"]
 
-        # Faz 4 A.2 oncesi kayitlarda container_name NULL olabilir.
-        # NULL ise docker ps --filter name= tum container'lari dondurur -> yanlis pozitif.
         if not container_name:
             print(f"[startup-check] container_name NULL, deployment {deployment_id} Failed yapiliyor")
             conn.execute(
-                """
-                UPDATE deployments
-                SET status='Failed', error_message='container_name bilinmiyor (eski kayit)'
-                WHERE id=?
-                """,
+                "UPDATE deployments SET status='Failed', error_message='container_name bilinmiyor (eski kayit)' WHERE id=?",
                 (deployment_id,)
             )
             continue
 
         print(f"[startup-check] Kontrol ediliyor: {container_name}")
 
-        # B.2 Secenek 2: docker komutu deploy-service'te yok.
-        # Builder-service'e GET /container-status istegi atarak kontrol ediyoruz.
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.get(
@@ -118,18 +152,12 @@ async def orphan_container_check():
         if not container_running:
             print(f"[startup-check] Container bulunamadi: {container_name}")
             conn.execute(
-                """
-                UPDATE deployments
-                SET status='Failed',
-                    error_message='Container not found after restart'
-                WHERE id=?
-                """,
+                "UPDATE deployments SET status='Failed', error_message='Container not found after restart' WHERE id=?",
                 (deployment_id,)
             )
 
     conn.commit()
     conn.close()
-
     print("[startup-check] Tamamlandi")
 
 # ─── Models ───────────────────────────────────────────────────
@@ -144,8 +172,6 @@ class WebhookRequest(BaseModel):
     subdomain: str = ""
 
 # ─── FAZ 4 A.3: Local JWT doğrulama ──────────────────────────────────────────
-# Auth Service down olsa bile tüm API endpoint'leri çalışmaya devam eder.
-# circuit_breaker.py'ye olan bağımlılık kaldırıldı.
 async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(bearer)) -> str:
     try:
         payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
@@ -158,30 +184,13 @@ async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(beare
 
 # ─── FAZ 4 A.2: Container adı üretici ───────────────────────────────────────
 def compute_container_name(user_email: str, project_name: str) -> str:
-    """
-    Kullanıcı bazlı benzersiz container adı üretir.
-
-    Örnekler:
-        omertank36@gmail.com + testapp   → omertank36_testapp
-        ali.veli@company.com + api       → ali_veli_api
-
-    Böylece farklı kullanıcılar aynı proje adını kullanabilir,
-    container çakışması olmaz.
-    """
     email_prefix = user_email.split("@")[0].lower().replace(".", "_")
-    # Docker isimlendirme kuralı: [a-zA-Z0-9][a-zA-Z0-9_.-]
     email_prefix = re.sub(r"[^a-z0-9_]", "_", email_prefix)
     clean_project = re.sub(r"[^a-z0-9-]", "-", project_name.lower().strip()).strip("-")
     clean_project = re.sub(r"-+", "-", clean_project)
     return f"{email_prefix}_{clean_project}"
 
 def compute_subdomain(user_email: str, project_name: str) -> str:
-    """
-    Traefik subdomain adı üretir.
-
-    Örnekler:
-        omertank36@gmail.com + testapp  → omertank36-testapp
-    """
     email_prefix = user_email.split("@")[0].lower().replace(".", "-")
     email_prefix = re.sub(r"[^a-z0-9-]", "-", email_prefix).strip("-")
     clean_project = re.sub(r"[^a-z0-9-]", "-", project_name.lower().strip()).strip("-")
@@ -204,10 +213,12 @@ async def get_github_token(email: str) -> str:
     return ""
 
 # ─── Builder tetikle ──────────────────────────────────────────
-# FAZ 4 A.2: container_name parametresi eklendi
 def trigger_builder(deploy_id: int, github_url: str, project_name: str,
                     github_token: str = "", container_name: str = "", subdomain: str = ""):
     deploy_total.labels(status='running').inc()
+    start_time = time.time()
+    status_label = "success"
+    
     try:
         r = http_requests.post(
             f"{BUILDER_SERVICE_URL}/deploy",
@@ -216,8 +227,8 @@ def trigger_builder(deploy_id: int, github_url: str, project_name: str,
                 "repo_url":       github_url,
                 "project_name":   project_name,
                 "github_token":   github_token,
-                "container_name": container_name,   # FAZ 4 A.2
-                "subdomain":      subdomain,        # FAZ 4 A.2
+                "container_name": container_name,
+                "subdomain":      subdomain,
             },
             headers={"X-Trace-Id": trace_id_var.get()},
             timeout=10
@@ -226,26 +237,45 @@ def trigger_builder(deploy_id: int, github_url: str, project_name: str,
 
         if r.status_code == 409:
             conn = get_connection()
-            conn.execute(
-                "UPDATE deployments SET status='Failed' WHERE id=?",
-                (deploy_id,)
-            )
+            conn.execute("UPDATE deployments SET status='Failed' WHERE id=?", (deploy_id,))
             conn.commit()
             conn.close()
-
+            DEPLOY_ERROR_TOTAL.labels(error_type='parallel_build_conflict', project_name=project_name).inc()
+            status_label = "failed"
             print("[Deploy Service] Paralel build engellendi")
             return
            
         service_logger.info(f"Builder tetiklendi, statüs: {r.status_code}")
-    except Exception as e:
-        service_logger.error(f"[Deploy Service] Builder ulaşılamadı: {e}")
+        
+    except http_requests.Timeout:
+        service_logger.error("[Deploy Service] Builder zaman aşımı")
+        DEPLOY_ERROR_TOTAL.labels(error_type='timeout', project_name=project_name).inc()
+        status_label = "failed"
         conn = get_connection()
         conn.execute("UPDATE deployments SET status='Failed' WHERE id=?", (deploy_id,))
         conn.commit()
         conn.close()
+    except http_requests.ConnectionError:
+        service_logger.error("[Deploy Service] Builder bağlantı hatası")
+        DEPLOY_ERROR_TOTAL.labels(error_type='connection_error', project_name=project_name).inc()
+        status_label = "failed"
+        conn = get_connection()
+        conn.execute("UPDATE deployments SET status='Failed' WHERE id=?", (deploy_id,))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        service_logger.error(f"[Deploy Service] Builder ulaşılamadı: {e}")
+        DEPLOY_ERROR_TOTAL.labels(error_type='unknown', project_name=project_name).inc()
+        status_label = "failed"
+        conn = get_connection()
+        conn.execute("UPDATE deployments SET status='Failed' WHERE id=?", (deploy_id,))
+        conn.commit()
+        conn.close()
+    finally:
+        duration = time.time() - start_time
+        DEPLOY_DURATION.labels(project_name=project_name, status=status_label).observe(duration)
 
 # ─── Yeni deployment başlat ───────────────────────────────────
-# FAZ 4 A.2: container_name parametresi eklendi, veritabanına yazılıyor
 def start_deployment(conn, email: str, project_name: str, github_url: str,
                      container_name: str = "") -> int:
     conn.execute(
@@ -274,7 +304,6 @@ def start_deployment(conn, email: str, project_name: str, github_url: str,
 @app.post("/api/projects")
 async def create_project(req: ProjectRequest, bg: BackgroundTasks,
                          email: str = Depends(verify_token)):
-    """Yeni proje oluştur ve ilk deploy'u başlat."""
     conn = get_connection()
     existing = conn.execute(
         "SELECT id FROM projects WHERE user_email=? AND LOWER(project_name)=LOWER(?)",
@@ -289,7 +318,6 @@ async def create_project(req: ProjectRequest, bg: BackgroundTasks,
         (email, req.project_name, req.github_url, datetime.utcnow().isoformat())
     )
 
-    # FAZ 4 A.2: kullanıcı-proje bazlı container adı
     container_name = compute_container_name(email, req.project_name)
     subdomain      = compute_subdomain(email, req.project_name)
 
@@ -313,7 +341,6 @@ async def list_projects(email: str = Depends(verify_token)):
 @app.post("/api/projects/{project_name}/redeploy")
 async def redeploy(project_name: str, bg: BackgroundTasks,
                    email: str = Depends(verify_token)):
-    """Mevcut projeyi yeniden deploy et."""
     conn = get_connection()
     proj = conn.execute(
         "SELECT * FROM projects WHERE user_email=? AND LOWER(project_name)=LOWER(?)",
@@ -323,7 +350,6 @@ async def redeploy(project_name: str, bg: BackgroundTasks,
         conn.close()
         raise HTTPException(status_code=404, detail="Proje bulunamadı")
 
-    # FAZ 4 A.2: container adını yeniden hesapla (tutarlılık için)
     container_name = compute_container_name(email, proj["project_name"])
     subdomain      = compute_subdomain(email, proj["project_name"])
 
@@ -338,7 +364,6 @@ async def redeploy(project_name: str, bg: BackgroundTasks,
 
 @app.put("/api/projects/{project_name}")
 async def update_project(project_name: str, req: dict, email: str = Depends(verify_token)):
-    """FAZ 5 C.1: Settings sayfasindan proje adi ve GitHub URL guncelle."""
     conn = get_connection()
     row = conn.execute(
         "SELECT id FROM projects WHERE user_email=? AND LOWER(project_name)=LOWER(?)",
@@ -363,7 +388,6 @@ async def update_project(project_name: str, req: dict, email: str = Depends(veri
 
 @app.delete("/api/projects/{project_name}")
 async def delete_project(project_name: str, email: str = Depends(verify_token)):
-    """Projeyi ve tüm deployment'larını sil."""
     conn = get_connection()
     proj = conn.execute(
         "SELECT * FROM projects WHERE user_email=? AND LOWER(project_name)=LOWER(?)",
@@ -373,7 +397,6 @@ async def delete_project(project_name: str, email: str = Depends(verify_token)):
         conn.close()
         raise HTTPException(status_code=404, detail="Proje bulunamadı")
 
-    # FAZ 4 A.2: container adını veritabanından al, yoksa hesapla
     running = conn.execute(
         """
         SELECT container_name FROM deployments
@@ -457,7 +480,6 @@ async def delete_deployment(deploy_id: int, email: str = Depends(verify_token)):
         conn.close()
         raise HTTPException(status_code=404, detail="Bulunamadı")
 
-    # FAZ 4 A.2: veritabanındaki container_name'i kullan
     container_name = (row["container_name"] if row["container_name"]
                       else compute_container_name(email, row["project_name"]))
     image_name     = f"{re.sub(r'[^a-z0-9-]', '-', row['project_name'].lower().strip()).strip('-')}-img"
@@ -500,7 +522,6 @@ async def stop_deployment(deploy_id: int, email: str = Depends(verify_token)):
         conn.close()
         raise HTTPException(status_code=400, detail="Sadece çalışan deployment durdurulabilir")
 
-    # FAZ 4 A.2: veritabanındaki container_name'i kullan
     container_name = (row["container_name"] if row["container_name"]
                       else compute_container_name(email, row["project_name"]))
 
@@ -532,20 +553,8 @@ async def latest_deployment(repo_name: str):
         raise HTTPException(status_code=404, detail="Deployment bulunamadı")
     return dict(row)
 
-# ─── FAZ 4 A.1: internal/deploy — upsert fix ─────────────────────────────────
 @app.post("/api/internal/deploy")
 async def internal_deploy(request: Request, bg: BackgroundTasks):
-    """
-    GitHub push webhook'undan tetiklenen otomatik deploy endpoint'i.
-
-    FAZ 4 A.1 değişikliği:
-        Endpoint başında projects tablosuna upsert yapılır.
-        Bu sayede push-to-deploy ile gelen deploy'lar Projects sayfasında görünür.
-
-    FAZ 4 A.2 değişikliği:
-        container_name ve subdomain artık user_email + project_name kombinasyonundan
-        hesaplanır; builder'a payload ile iletilir.
-    """
     data         = await request.json()
     user_email   = data.get("user_email", "")
     project_name = data.get("project_name", "")
@@ -557,15 +566,12 @@ async def internal_deploy(request: Request, bg: BackgroundTasks):
 
     conn = get_connection()
 
-    # ── A.1: Projects tablosuna upsert ───────────────────────────────────────
-    # Push-to-deploy ile gelen deploy'lar artık Projects sayfasında görünür.
     if github_url and user_email:
         upsert_project(conn, user_email, project_name, github_url)
     else:
         service_logger.info(f"[Deploy Service] internal/deploy: upsert atlandı "
                             f"(user_email={user_email!r}, github_url={github_url!r})")
 
-    # ── A.2: Kullanıcı bazlı container adı hesapla ───────────────────────────
     container_name = compute_container_name(user_email or "anon", project_name)
     subdomain      = compute_subdomain(user_email or "anon", project_name)
 
@@ -576,7 +582,7 @@ async def internal_deploy(request: Request, bg: BackgroundTasks):
                 github_token, container_name, subdomain)
     return {"message": "Redeploy başlatıldı", "deploy_id": deploy_id}
 
-# ─── Health ───────────────────────────────────────────────────
+# ─── Health & Metrics ──────────────────────────────────────────
 @app.get("/health")
 async def health():
     try:
@@ -586,7 +592,6 @@ async def health():
         return {"status": "ok", "service": "deploy-service"}
     except Exception as e:
         return {"status": "error", "detail": str(e)}
-# FAZ 5 B.1: Prometheus metrics endpoint
 
 @app.get("/metrics")
 async def metrics():

@@ -59,6 +59,7 @@ services:
 
   # ── 2. DASHBOARD SERVICE ──────────────────────────────────────
   dashboard-service:
+    build: ./dashboard-service
     image: mini-paas/dashboard-service:latest
     networks:
       - paas-net
@@ -75,6 +76,7 @@ services:
 
   # ── 3. AUTH SERVICE ───────────────────────────────────────────
   auth-service:
+    build: ./auth-service
     image: mini-paas/auth-service:latest
     networks:
       - paas-net
@@ -105,6 +107,7 @@ services:
 
   # ── 4. DEPLOY SERVICE ─────────────────────────────────────────
   deploy-service:
+    build: ./deploy-service
     image: mini-paas/deploy-service:latest
     networks:
       - paas-net
@@ -141,6 +144,7 @@ services:
 
   # ── 5. GITHUB SERVICE ─────────────────────────────────────────
   github-service:
+    build: ./github-service
     image: mini-paas/github-service:latest
     networks:
       - paas-net
@@ -177,6 +181,7 @@ services:
 
   # ── 6. BUILDER SERVICE ────────────────────────────────────────
   builder-service:
+    build: ./builder-service
     image: mini-paas/builder-service:latest
     ports:
       - "5000:5000"
