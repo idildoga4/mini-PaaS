@@ -1,5 +1,6 @@
 # Auth Service
 # FAZ 6: StaticFiles mount kaldırıldı — dashboard artık dashboard-service tarafından serve ediliyor.
+# FAZ 7: SQLite → PostgreSQL geçişi — ? placeholder'ları %s'e, cursor pattern'e geçildi.
 
 import uuid
 import contextvars
@@ -135,13 +136,17 @@ async def register(req: RegisterRequest):
     pw_err = validate_password(req.password)
     if pw_err:
         raise HTTPException(status_code=400, detail=pw_err)
+
     conn = get_connection()
-    if conn.execute("SELECT id FROM users WHERE email=?", (email,)).fetchone():
+    c = conn.cursor()
+    c.execute("SELECT id FROM users WHERE email=%s", (email,))
+    if c.fetchone():
         conn.close()
         raise HTTPException(status_code=409, detail="Bu e-posta zaten kayitli")
+
     hashed = hash_password(req.password)
-    conn.execute(
-        "INSERT INTO users (email, password, created_at) VALUES (?,?,?)",
+    c.execute(
+        "INSERT INTO users (email, password, created_at) VALUES (%s,%s,%s)",
         (email, hashed, datetime.utcnow().isoformat())
     )
     conn.commit()
@@ -153,7 +158,9 @@ async def register(req: RegisterRequest):
 async def login(req: LoginRequest):
     email = req.email.lower().strip()
     conn  = get_connection()
-    row   = conn.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
+    c = conn.cursor()
+    c.execute("SELECT * FROM users WHERE email=%s", (email,))
+    row = c.fetchone()
     conn.close()
     if not row or not check_password(req.password, row["password"]):
         raise HTTPException(status_code=401, detail="E-posta veya sifre hatali")
@@ -174,7 +181,8 @@ async def verify_token_endpoint(email: str = Depends(verify_token)):
 async def health():
     try:
         conn = get_connection()
-        conn.execute("SELECT 1").fetchone()
+        c = conn.cursor()
+        c.execute("SELECT 1")
         conn.close()
         return {"status": "ok", "service": "auth-service"}
     except Exception as e:
@@ -182,10 +190,7 @@ async def health():
 
 @app.get('/metrics', include_in_schema=False)
 async def metrics():
-    # StaticFiles olmadığı için artık app.mount çakışması yok.
-    # generate_latest() + Response pattern korundu (Faz 5'ten).
     return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 # FAZ 6: app.mount("/", StaticFiles(...)) KALDIRILDI.
 # Dashboard artık dashboard-service (Nginx) tarafından serve ediliyor.
-# Bu değişiklik /metrics 404 sorununu da kalıcı olarak çözüyor.

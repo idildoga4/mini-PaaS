@@ -1,4 +1,11 @@
 # Deploy Service
+# FAZ 7: SQLite → PostgreSQL geçişi
+#   - conn.execute() → c = conn.cursor(); c.execute() pattern'ine geçildi
+#   - ? placeholder'ları %s'e dönüştürüldü
+#   - cursor.lastrowid → RETURNING id ile değiştirildi
+#   - datetime('now') → kaldırıldı (Python tarafında datetime.utcnow() zaten vardı)
+#   - LOWER(?) → LOWER(%s)
+#   - LIKE ? → LIKE %s
 
 import uuid
 import contextvars
@@ -77,28 +84,23 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 # --- ORTAK MİDDLEWARE (Trace ID ve HTTP Metrikleri) ---
 @app.middleware("http")
 async def main_middleware(request: Request, call_next):
-    # 1. Trace ID Ayarla
     trace_id = request.headers.get("X-Trace-Id", str(uuid.uuid4())[:8])
     token = trace_id_var.set(trace_id)
     
-    # 2. Metrik İçin Süreyi Başlat
     start_time = time.time()
     response = await call_next(request)
     duration = time.time() - start_time
     
-    # 3. URL'leri Temizle (ID'leri gruplayarak PromQL'in şişmesini engelleriz)
     path = request.url.path
     path = re.sub(r'/[0-9]+', '/{id}', path)
     path = re.sub(r'/projects/[^/]+(/redeploy)?', r'/projects/{project_name}\1', path)
     
-    # 4. Metriği Kaydet
     HTTP_REQUEST_DURATION.labels(
         method=request.method,
         endpoint=path,
         status_code=response.status_code
     ).observe(duration)
     
-    # 5. Temizlik ve Dönüş
     response.headers["X-Trace-Id"] = trace_id
     trace_id_var.reset(token)
     return response
@@ -107,18 +109,12 @@ async def main_middleware(request: Request, call_next):
 @app.on_event("startup")
 async def orphan_container_check():
     await asyncio.sleep(3)
-
     print("[startup-check] Running deployment container kontrolü başlıyor")
 
     conn = get_connection()
-
-    rows = conn.execute(
-        """
-        SELECT id, container_name
-        FROM deployments
-        WHERE status='Running'
-        """
-    ).fetchall()
+    c = conn.cursor()
+    c.execute("SELECT id, container_name FROM deployments WHERE status='Running'")
+    rows = c.fetchall()
 
     for row in rows:
         deployment_id  = row["id"]
@@ -126,9 +122,9 @@ async def orphan_container_check():
 
         if not container_name:
             print(f"[startup-check] container_name NULL, deployment {deployment_id} Failed yapiliyor")
-            conn.execute(
-                "UPDATE deployments SET status='Failed', error_message='container_name bilinmiyor (eski kayit)' WHERE id=?",
-                (deployment_id,)
+            c.execute(
+                "UPDATE deployments SET status='Failed', error_message=%s WHERE id=%s",
+                ('container_name bilinmiyor (eski kayit)', deployment_id)
             )
             continue
 
@@ -151,9 +147,9 @@ async def orphan_container_check():
 
         if not container_running:
             print(f"[startup-check] Container bulunamadi: {container_name}")
-            conn.execute(
-                "UPDATE deployments SET status='Failed', error_message='Container not found after restart' WHERE id=?",
-                (deployment_id,)
+            c.execute(
+                "UPDATE deployments SET status='Failed', error_message=%s WHERE id=%s",
+                ('Container not found after restart', deployment_id)
             )
 
     conn.commit()
@@ -237,7 +233,8 @@ def trigger_builder(deploy_id: int, github_url: str, project_name: str,
 
         if r.status_code == 409:
             conn = get_connection()
-            conn.execute("UPDATE deployments SET status='Failed' WHERE id=?", (deploy_id,))
+            c = conn.cursor()
+            c.execute("UPDATE deployments SET status='Failed' WHERE id=%s", (deploy_id,))
             conn.commit()
             conn.close()
             deploy_error_total.labels(error_type='parallel_build_conflict', project_name=project_name).inc()
@@ -252,7 +249,8 @@ def trigger_builder(deploy_id: int, github_url: str, project_name: str,
         deploy_error_total.labels(error_type='timeout', project_name=project_name).inc()
         status_label = "failed"
         conn = get_connection()
-        conn.execute("UPDATE deployments SET status='Failed' WHERE id=?", (deploy_id,))
+        c = conn.cursor()
+        c.execute("UPDATE deployments SET status='Failed' WHERE id=%s", (deploy_id,))
         conn.commit()
         conn.close()
     except http_requests.ConnectionError:
@@ -260,7 +258,8 @@ def trigger_builder(deploy_id: int, github_url: str, project_name: str,
         deploy_error_total.labels(error_type='connection_error', project_name=project_name).inc()
         status_label = "failed"
         conn = get_connection()
-        conn.execute("UPDATE deployments SET status='Failed' WHERE id=?", (deploy_id,))
+        c = conn.cursor()
+        c.execute("UPDATE deployments SET status='Failed' WHERE id=%s", (deploy_id,))
         conn.commit()
         conn.close()
     except Exception as e:
@@ -268,7 +267,8 @@ def trigger_builder(deploy_id: int, github_url: str, project_name: str,
         deploy_error_total.labels(error_type='unknown', project_name=project_name).inc()
         status_label = "failed"
         conn = get_connection()
-        conn.execute("UPDATE deployments SET status='Failed' WHERE id=?", (deploy_id,))
+        c = conn.cursor()
+        c.execute("UPDATE deployments SET status='Failed' WHERE id=%s", (deploy_id,))
         conn.commit()
         conn.close()
     finally:
@@ -278,25 +278,27 @@ def trigger_builder(deploy_id: int, github_url: str, project_name: str,
 # ─── Yeni deployment başlat ───────────────────────────────────
 def start_deployment(conn, email: str, project_name: str, github_url: str,
                      container_name: str = "") -> int:
-    conn.execute(
+    c = conn.cursor()
+    c.execute(
         """
         UPDATE deployments SET status='Stopped'
-        WHERE user_email=? AND LOWER(project_name)=LOWER(?)
+        WHERE user_email=%s AND LOWER(project_name)=LOWER(%s)
           AND status IN ('Running','Pending','Building')
         """,
         (email, project_name)
     )
-    cursor = conn.cursor()
-    cursor.execute(
+    # RETURNING id — SQLite'taki lastrowid'nin PostgreSQL karşılığı
+    c.execute(
         """
         INSERT INTO deployments
             (user_email, project_name, github_url, status, container_name, created_at)
-        VALUES (?,?,?,?,?,?)
+        VALUES (%s,%s,%s,%s,%s,%s)
+        RETURNING id
         """,
         (email, project_name, github_url, "Pending", container_name,
          datetime.utcnow().isoformat())
     )
-    deploy_id = cursor.lastrowid
+    deploy_id = c.fetchone()["id"]
     conn.commit()
     return deploy_id
 
@@ -305,16 +307,17 @@ def start_deployment(conn, email: str, project_name: str, github_url: str,
 async def create_project(req: ProjectRequest, bg: BackgroundTasks,
                          email: str = Depends(verify_token)):
     conn = get_connection()
-    existing = conn.execute(
-        "SELECT id FROM projects WHERE user_email=? AND LOWER(project_name)=LOWER(?)",
+    c = conn.cursor()
+    c.execute(
+        "SELECT id FROM projects WHERE user_email=%s AND LOWER(project_name)=LOWER(%s)",
         (email, req.project_name)
-    ).fetchone()
-    if existing:
+    )
+    if c.fetchone():
         conn.close()
         raise HTTPException(status_code=409, detail="Bu proje adı zaten kullanılıyor")
 
-    conn.execute(
-        "INSERT INTO projects (user_email, project_name, github_url, created_at) VALUES (?,?,?,?)",
+    c.execute(
+        "INSERT INTO projects (user_email, project_name, github_url, created_at) VALUES (%s,%s,%s,%s)",
         (email, req.project_name, req.github_url, datetime.utcnow().isoformat())
     )
 
@@ -332,9 +335,9 @@ async def create_project(req: ProjectRequest, bg: BackgroundTasks,
 @app.get("/api/projects")
 async def list_projects(email: str = Depends(verify_token)):
     conn = get_connection()
-    rows = conn.execute(
-        "SELECT * FROM projects WHERE user_email=? ORDER BY id DESC", (email,)
-    ).fetchall()
+    c = conn.cursor()
+    c.execute("SELECT * FROM projects WHERE user_email=%s ORDER BY id DESC", (email,))
+    rows = c.fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
@@ -342,10 +345,12 @@ async def list_projects(email: str = Depends(verify_token)):
 async def redeploy(project_name: str, bg: BackgroundTasks,
                    email: str = Depends(verify_token)):
     conn = get_connection()
-    proj = conn.execute(
-        "SELECT * FROM projects WHERE user_email=? AND LOWER(project_name)=LOWER(?)",
+    c = conn.cursor()
+    c.execute(
+        "SELECT * FROM projects WHERE user_email=%s AND LOWER(project_name)=LOWER(%s)",
         (email, project_name)
-    ).fetchone()
+    )
+    proj = c.fetchone()
     if not proj:
         conn.close()
         raise HTTPException(status_code=404, detail="Proje bulunamadı")
@@ -365,20 +370,22 @@ async def redeploy(project_name: str, bg: BackgroundTasks,
 @app.put("/api/projects/{project_name}")
 async def update_project(project_name: str, req: dict, email: str = Depends(verify_token)):
     conn = get_connection()
-    row = conn.execute(
-        "SELECT id FROM projects WHERE user_email=? AND LOWER(project_name)=LOWER(?)",
+    c = conn.cursor()
+    c.execute(
+        "SELECT id FROM projects WHERE user_email=%s AND LOWER(project_name)=LOWER(%s)",
         (email, project_name)
-    ).fetchone()
+    )
+    row = c.fetchone()
     if not row:
         conn.close()
         raise HTTPException(status_code=404, detail="Proje bulunamadi")
-    new_name   = req.get("project_name", project_name).strip()
-    new_url    = req.get("github_url", "").strip()
+    new_name = req.get("project_name", project_name).strip()
+    new_url  = req.get("github_url", "").strip()
     if not new_name or not new_url:
         conn.close()
         raise HTTPException(status_code=422, detail="project_name ve github_url zorunlu")
-    conn.execute(
-        "UPDATE projects SET project_name=?, github_url=? WHERE id=?",
+    c.execute(
+        "UPDATE projects SET project_name=%s, github_url=%s WHERE id=%s",
         (new_name, new_url, row["id"])
     )
     conn.commit()
@@ -389,33 +396,36 @@ async def update_project(project_name: str, req: dict, email: str = Depends(veri
 @app.delete("/api/projects/{project_name}")
 async def delete_project(project_name: str, email: str = Depends(verify_token)):
     conn = get_connection()
-    proj = conn.execute(
-        "SELECT * FROM projects WHERE user_email=? AND LOWER(project_name)=LOWER(?)",
+    c = conn.cursor()
+    c.execute(
+        "SELECT * FROM projects WHERE user_email=%s AND LOWER(project_name)=LOWER(%s)",
         (email, project_name)
-    ).fetchone()
+    )
+    proj = c.fetchone()
     if not proj:
         conn.close()
         raise HTTPException(status_code=404, detail="Proje bulunamadı")
 
-    running = conn.execute(
+    c.execute(
         """
         SELECT container_name FROM deployments
-        WHERE user_email=? AND LOWER(project_name)=LOWER(?) AND status='Running'
+        WHERE user_email=%s AND LOWER(project_name)=LOWER(%s) AND status='Running'
         ORDER BY id DESC LIMIT 1
         """,
         (email, project_name)
-    ).fetchone()
+    )
+    running = c.fetchone()
 
     container_name = (running["container_name"] if running and running["container_name"]
                       else compute_container_name(email, project_name))
     image_name     = f"{re.sub(r'[^a-z0-9-]', '-', project_name.lower().strip()).strip('-')}-img"
 
-    conn.execute(
-        "DELETE FROM deployments WHERE user_email=? AND LOWER(project_name)=LOWER(?)",
+    c.execute(
+        "DELETE FROM deployments WHERE user_email=%s AND LOWER(project_name)=LOWER(%s)",
         (email, project_name)
     )
-    conn.execute(
-        "DELETE FROM projects WHERE user_email=? AND LOWER(project_name)=LOWER(?)",
+    c.execute(
+        "DELETE FROM projects WHERE user_email=%s AND LOWER(project_name)=LOWER(%s)",
         (email, project_name)
     )
     conn.commit()
@@ -437,8 +447,9 @@ async def delete_project(project_name: str, email: str = Depends(verify_token)):
 @app.post("/api/webhook")
 async def webhook(req: WebhookRequest):
     conn = get_connection()
-    conn.execute(
-        "UPDATE deployments SET status=?, port=?, subdomain=? WHERE id=?",
+    c = conn.cursor()
+    c.execute(
+        "UPDATE deployments SET status=%s, port=%s, subdomain=%s WHERE id=%s",
         (req.status, req.port, req.subdomain, req.deploy_id)
     )
     conn.commit()
@@ -448,14 +459,8 @@ async def webhook(req: WebhookRequest):
         deploy_total.labels(status='success').inc()
     else:
         deploy_total.labels(status='failed').inc()
-        
-        # --- EKLENEN YENİ KISIM BAŞLANGICI ---
-        # Subdomain "projem.localhost" formatında geldiği için ilk kısmını alıp proje adını buluyoruz
         project_name = req.subdomain.split('.')[0] if req.subdomain else "bilinmeyen"
-        
-        # Grafana'daki "Hata Kırılımı (Deploy Error)" panelini dolduracak asıl tetikleyici
         deploy_error_total.labels(error_type="healthcheck_failed", project_name=project_name).inc()
-        # --- EKLENEN YENİ KISIM BİTİŞİ ---
         
     service_logger.info(f"[Deploy Service] Deploy #{req.deploy_id} → {req.status}")
     return {"message": "Güncellendi"}
@@ -463,9 +468,9 @@ async def webhook(req: WebhookRequest):
 @app.get("/api/status/{deploy_id}")
 async def status(deploy_id: int, email: str = Depends(verify_token)):
     conn = get_connection()
-    row = conn.execute(
-        "SELECT * FROM deployments WHERE id=? AND user_email=?", (deploy_id, email)
-    ).fetchone()
+    c = conn.cursor()
+    c.execute("SELECT * FROM deployments WHERE id=%s AND user_email=%s", (deploy_id, email))
+    row = c.fetchone()
     conn.close()
     if not row:
         raise HTTPException(status_code=404, detail="Bulunamadı")
@@ -474,18 +479,18 @@ async def status(deploy_id: int, email: str = Depends(verify_token)):
 @app.get("/api/deployments")
 async def list_deployments(email: str = Depends(verify_token)):
     conn = get_connection()
-    rows = conn.execute(
-        "SELECT * FROM deployments WHERE user_email=? ORDER BY id DESC", (email,)
-    ).fetchall()
+    c = conn.cursor()
+    c.execute("SELECT * FROM deployments WHERE user_email=%s ORDER BY id DESC", (email,))
+    rows = c.fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
 @app.delete("/api/deployments/{deploy_id}")
 async def delete_deployment(deploy_id: int, email: str = Depends(verify_token)):
     conn = get_connection()
-    row = conn.execute(
-        "SELECT * FROM deployments WHERE id=? AND user_email=?", (deploy_id, email)
-    ).fetchone()
+    c = conn.cursor()
+    c.execute("SELECT * FROM deployments WHERE id=%s AND user_email=%s", (deploy_id, email))
+    row = c.fetchone()
     if not row:
         conn.close()
         raise HTTPException(status_code=404, detail="Bulunamadı")
@@ -494,15 +499,16 @@ async def delete_deployment(deploy_id: int, email: str = Depends(verify_token)):
                       else compute_container_name(email, row["project_name"]))
     image_name     = f"{re.sub(r'[^a-z0-9-]', '-', row['project_name'].lower().strip()).strip('-')}-img"
 
-    other = conn.execute(
+    c.execute(
         """
         SELECT id FROM deployments
-        WHERE user_email=? AND project_name=? AND id!=? AND status='Running'
+        WHERE user_email=%s AND project_name=%s AND id!=%s AND status='Running'
         """,
         (email, row["project_name"], deploy_id)
-    ).fetchone()
+    )
+    other = c.fetchone()
 
-    conn.execute("DELETE FROM deployments WHERE id=?", (deploy_id,))
+    c.execute("DELETE FROM deployments WHERE id=%s", (deploy_id,))
     conn.commit()
     conn.close()
 
@@ -522,9 +528,9 @@ async def delete_deployment(deploy_id: int, email: str = Depends(verify_token)):
 @app.post("/api/deployments/{deploy_id}/stop")
 async def stop_deployment(deploy_id: int, email: str = Depends(verify_token)):
     conn = get_connection()
-    row = conn.execute(
-        "SELECT * FROM deployments WHERE id=? AND user_email=?", (deploy_id, email)
-    ).fetchone()
+    c = conn.cursor()
+    c.execute("SELECT * FROM deployments WHERE id=%s AND user_email=%s", (deploy_id, email))
+    row = c.fetchone()
     if not row:
         conn.close()
         raise HTTPException(status_code=404, detail="Bulunamadı")
@@ -545,7 +551,7 @@ async def stop_deployment(deploy_id: int, email: str = Depends(verify_token)):
     except Exception as e:
         service_logger.error(f"[Deploy Service] Stop hatası: {e}")
 
-    conn.execute("UPDATE deployments SET status='Stopped' WHERE id=?", (deploy_id,))
+    c.execute("UPDATE deployments SET status='Stopped' WHERE id=%s", (deploy_id,))
     conn.commit()
     conn.close()
     return {"message": "Durduruldu"}
@@ -554,10 +560,12 @@ async def stop_deployment(deploy_id: int, email: str = Depends(verify_token)):
 @app.get("/api/internal/latest-deployment")
 async def latest_deployment(repo_name: str):
     conn = get_connection()
-    row = conn.execute(
-        "SELECT * FROM deployments WHERE github_url LIKE ? ORDER BY id DESC LIMIT 1",
+    c = conn.cursor()
+    c.execute(
+        "SELECT * FROM deployments WHERE github_url LIKE %s ORDER BY id DESC LIMIT 1",
         (f"%{repo_name}%",)
-    ).fetchone()
+    )
+    row = c.fetchone()
     conn.close()
     if not row:
         raise HTTPException(status_code=404, detail="Deployment bulunamadı")
@@ -597,7 +605,8 @@ async def internal_deploy(request: Request, bg: BackgroundTasks):
 async def health():
     try:
         conn = get_connection()
-        conn.execute("SELECT 1").fetchone()
+        c = conn.cursor()
+        c.execute("SELECT 1")
         conn.close()
         return {"status": "ok", "service": "deploy-service"}
     except Exception as e:

@@ -1,39 +1,38 @@
-import sqlite3
-import os
+"""
+FAZ 7: SQLite → PostgreSQL geçişi
+- sqlite3 kaldırıldı, psycopg2 eklendi
+- WAL mode, check_same_thread, PRAGMA'lar kaldırıldı
+- ALTER TABLE migration bloğu kaldırıldı (PostgreSQL'de IF NOT EXISTS yeterli)
+- Connection string DATABASE_URL env variable'dan geliyor
+- Row dict dönüşümü: sqlite3.Row yerine RealDictCursor kullanılıyor
+"""
 
-DB_PATH = "data/auth.db"
+import os
+import psycopg2
+import psycopg2.extras
+
+DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "postgresql://paas_user:paas_pass@postgres:5432/auth_db"
+)
 
 
 def init_db():
-    os.makedirs("data", exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
-
-    # FAZ 6: WAL mode — eş zamanlı okuma/yazma güvenli hale gelir.
-    # Aynı fiziksel dosyaya birden fazla bağlantı (ve ileride replicas>1) için zorunlu.
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=NORMAL")  # WAL ile birlikte güvenli, daha hızlı
-
+    conn = get_connection()
     c = conn.cursor()
     c.execute("""
         CREATE TABLE IF NOT EXISTS users (
-            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            id           SERIAL PRIMARY KEY,
             email        TEXT NOT NULL UNIQUE,
             password     TEXT NOT NULL,
             created_at   TEXT NOT NULL,
             github_token TEXT
         )
     """)
-    try:
-        c.execute("ALTER TABLE users ADD COLUMN github_token TEXT")
-    except Exception:
-        pass
     conn.commit()
     conn.close()
 
 
 def get_connection():
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    # Her bağlantıda WAL mode'u doğrula (yeni bağlantılar için)
-    conn.execute("PRAGMA journal_mode=WAL")
+    conn = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
     return conn

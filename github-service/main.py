@@ -1,4 +1,9 @@
 # GitHub Service
+# FAZ 7: SQLite → PostgreSQL geçişi
+#   - conn.execute() → c = conn.cursor(); c.execute() pattern'ine geçildi
+#   - ? → %s placeholder
+#   - ON CONFLICT(email) DO UPDATE SET → PostgreSQL syntax'ına uyarlandı
+#   - ON CONFLICT DO NOTHING → PostgreSQL'de aynı, korundu
 
 import uuid
 import contextvars
@@ -35,11 +40,11 @@ logger.setLevel(logging.INFO)
 service_logger = logging.LoggerAdapter(logger, extra={"service_name": "github-service"})
 
 SECRET_KEY           = get_secret("jwt_secret",            "JWT_SECRET")
-ALGORITHM             = "HS256"
-GITHUB_CLIENT_ID      = os.getenv("GITHUB_CLIENT_ID")
+ALGORITHM            = "HS256"
+GITHUB_CLIENT_ID     = os.getenv("GITHUB_CLIENT_ID")
 GITHUB_CLIENT_SECRET = get_secret("github_client_secret",  "GITHUB_CLIENT_SECRET")
 WEBHOOK_SECRET       = get_secret("webhook_secret",        "WEBHOOK_SECRET")
-DEPLOY_SERVICE_URL    = os.getenv("DEPLOY_SERVICE_URL", "http://deploy-service:8003")
+DEPLOY_SERVICE_URL   = os.getenv("DEPLOY_SERVICE_URL", "http://deploy-service:8003")
 
 bearer = HTTPBearer()
 app = FastAPI(title="GitHub Service")
@@ -107,11 +112,17 @@ async def github_callback(code: str, state: str):
         raise HTTPException(status_code=400, detail="GitHub token alınamadı")
 
     conn = get_connection()
-    conn.execute("""
+    c = conn.cursor()
+    c.execute(
+        """
         INSERT INTO github_tokens (email, github_token, updated_at)
-        VALUES (?,?,?)
-        ON CONFLICT(email) DO UPDATE SET github_token=excluded.github_token, updated_at=excluded.updated_at
-    """, (email, github_token, datetime.utcnow().isoformat()))
+        VALUES (%s, %s, %s)
+        ON CONFLICT (email) DO UPDATE
+        SET github_token = EXCLUDED.github_token,
+            updated_at   = EXCLUDED.updated_at
+        """,
+        (email, github_token, datetime.utcnow().isoformat())
+    )
     conn.commit()
     conn.close()
     service_logger.info(f"[GitHub Service] OAuth bağlandı → {email}")
@@ -120,14 +131,17 @@ async def github_callback(code: str, state: str):
 @app.get("/api/github/status")
 async def github_status(email: str = Depends(verify_token)):
     conn = get_connection()
-    row = conn.execute("SELECT github_token FROM github_tokens WHERE email=?", (email,)).fetchone()
+    c = conn.cursor()
+    c.execute("SELECT github_token FROM github_tokens WHERE email=%s", (email,))
+    row = c.fetchone()
     conn.close()
     return {"connected": bool(row and row["github_token"])}
 
 @app.delete("/api/github/disconnect")
 async def github_disconnect(email: str = Depends(verify_token)):
     conn = get_connection()
-    conn.execute("UPDATE github_tokens SET github_token=NULL WHERE email=?", (email,))
+    c = conn.cursor()
+    c.execute("UPDATE github_tokens SET github_token=NULL WHERE email=%s", (email,))
     conn.commit()
     conn.close()
     service_logger.info(f"[GitHub Service] GitHub bağlantısı kesildi → {email}")
@@ -137,7 +151,9 @@ async def github_disconnect(email: str = Depends(verify_token)):
 async def get_github_token(email: str):
     """Deploy Service'in kullanıcı token'ını sorgulaması için internal endpoint."""
     conn = get_connection()
-    row = conn.execute("SELECT github_token FROM github_tokens WHERE email=?", (email,)).fetchone()
+    c = conn.cursor()
+    c.execute("SELECT github_token FROM github_tokens WHERE email=%s", (email,))
+    row = c.fetchone()
     conn.close()
     token = (row["github_token"] or "") if row else ""
     return {"token": token}
@@ -179,9 +195,11 @@ async def github_webhook(request: Request):
         return {"message": "Deploy Service ulaşılamadı"}
 
     conn = get_connection()
-    token_row = conn.execute(
-        "SELECT github_token FROM github_tokens WHERE email=?", (user_email,)
-    ).fetchone()
+    c = conn.cursor()
+    c.execute(
+        "SELECT github_token FROM github_tokens WHERE email=%s", (user_email,)
+    )
+    token_row = c.fetchone()
     github_token = (token_row["github_token"] or "") if token_row else ""
     conn.close()
 
@@ -211,11 +229,15 @@ async def register_repo(request: Request, email: str = Depends(verify_token)):
     if not repo_name or not project_name:
         raise HTTPException(status_code=400, detail="repo_name ve project_name gerekli")
     conn = get_connection()
-    conn.execute("""
+    c = conn.cursor()
+    c.execute(
+        """
         INSERT INTO repo_mappings (repo_name, user_email, project_name, updated_at)
-        VALUES (?,?,?,?)
+        VALUES (%s, %s, %s, %s)
         ON CONFLICT DO NOTHING
-    """, (repo_name, email, project_name, datetime.utcnow().isoformat()))
+        """,
+        (repo_name, email, project_name, datetime.utcnow().isoformat())
+    )
     conn.commit()
     conn.close()
     return {"message": "Repo mapping kaydedildi"}
@@ -229,7 +251,8 @@ async def metrics():
 async def health():
     try:
         conn = get_connection()
-        conn.execute("SELECT 1").fetchone()
+        c = conn.cursor()
+        c.execute("SELECT 1")
         conn.close()
         return {"status": "ok", "service": "github-service"}
     except Exception as e:

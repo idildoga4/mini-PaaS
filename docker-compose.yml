@@ -2,8 +2,11 @@ version: '3.8'
 
 # FAZ 6 degisiklikleri:
 #   - dashboard-service eklendi (Nginx — index.html serve eder)
-#   - auth-service volume mount auth-service/data -> app/data olarak kaldi
-#   - github-service/data/ altindaki deploy.db kalintisini elle sil
+# FAZ 7 degisiklikleri:
+#   - postgres servisi eklendi (auth_db, deploy_db, github_db)
+#   - auth/deploy/github servisler DATABASE_URL ile PostgreSQL'e baglanıyor
+#   - SQLite volume bind mount'ları kaldırıldı (./servis/data:/app/data)
+#   - depends_on postgres: condition: service_healthy eklendi
 
 services:
 
@@ -30,7 +33,33 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./traefik_dynamic.yml:/etc/traefik/dynamic.yml
 
-  # ── 2. DASHBOARD SERVICE ──────────────────────────────────────
+  # ── 2. POSTGRESQL ─────────────────────────────────────────────
+  # Tek PostgreSQL instance, 3 database barındırıyor:
+  #   auth_db, deploy_db, github_db
+  # postgres-init/01_create_databases.sql ile deploy_db ve github_db otomatik oluşur.
+  postgres:
+    image: postgres:16-alpine
+    container_name: paas_postgres
+    networks:
+      - paas-net
+    ports:
+      - "5433:5432"       # host'tan migration script erişimi için
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
+    environment:
+      - POSTGRES_USER=paas_user
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-paas_pass}
+      - POSTGRES_DB=auth_db
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U paas_user -d auth_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  # ── 3. DASHBOARD SERVICE ──────────────────────────────────────
   # FAZ 6: Dashboard auth-service'den ayrıldı.
   # Auth service down olsa bile dashboard erişilebilir kalır.
   dashboard-service:
@@ -46,7 +75,7 @@ services:
       start_period: 5s
     restart: unless-stopped
 
-  # ── 3. AUTH SERVICE ───────────────────────────────────────────
+  # ── 4. AUTH SERVICE ───────────────────────────────────────────
   auth-service:
     env_file:
       - .env
@@ -56,17 +85,20 @@ services:
       - paas-net
     ports:
       - "5002:8001"
-    volumes:
-      - ./auth-service/data:/app/data
+    environment:
+      - DATABASE_URL=postgresql://paas_user:${POSTGRES_PASSWORD:-paas_pass}@postgres:5432/auth_db
+    depends_on:
+      postgres:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 15s
+      start_period: 20s
     restart: unless-stopped
 
-  # ── 4. DEPLOY SERVICE ─────────────────────────────────────────
+  # ── 5. DEPLOY SERVICE ─────────────────────────────────────────
   deploy-service:
     env_file:
       - .env
@@ -76,24 +108,27 @@ services:
       - paas-net
     ports:
       - "5003:8003"
-    volumes:
-      - ./deploy-service/data:/app/data
     environment:
       - AUTH_SERVICE_URL=http://auth-service:8001
       - BUILDER_SERVICE_URL=http://builder-service:5000
       - GITHUB_SERVICE_URL=http://github-service:8002
+      - DATABASE_URL=postgresql://paas_user:${POSTGRES_PASSWORD:-paas_pass}@postgres:5432/deploy_db
     depends_on:
-      - auth-service
-      - builder-service
+      postgres:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+      builder-service:
+        condition: service_started
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8003/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 15s
+      start_period: 20s
     restart: unless-stopped
 
-  # ── 5. GITHUB SERVICE ─────────────────────────────────────────
+  # ── 6. GITHUB SERVICE ─────────────────────────────────────────
   github-service:
     env_file:
       - .env
@@ -103,23 +138,26 @@ services:
       - paas-net
     ports:
       - "5004:8002"
-    volumes:
-      - ./github-service/data:/app/data
     environment:
       - AUTH_SERVICE_URL=http://auth-service:8001
       - DEPLOY_SERVICE_URL=http://deploy-service:8003
+      - DATABASE_URL=postgresql://paas_user:${POSTGRES_PASSWORD:-paas_pass}@postgres:5432/github_db
     depends_on:
-      - auth-service
-      - deploy-service
+      postgres:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+      deploy-service:
+        condition: service_started
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 15s
+      start_period: 20s
     restart: unless-stopped
 
-  # ── 6. BUILDER SERVICE ────────────────────────────────────────
+  # ── 7. BUILDER SERVICE ────────────────────────────────────────
   builder-service:
     env_file:
       - .env
@@ -142,7 +180,7 @@ services:
       start_period: 15s
     restart: unless-stopped
 
-  # ── 7. PROMETHEUS ─────────────────────────────────────────────
+  # ── 8. PROMETHEUS ─────────────────────────────────────────────
   prometheus:
     image: prom/prometheus:latest
     container_name: paas_monitor
@@ -158,7 +196,7 @@ services:
       - "9090:9090"
     restart: unless-stopped
 
-  # ── 8. GRAFANA ────────────────────────────────────────────────
+  # ── 9. GRAFANA ────────────────────────────────────────────────
   grafana:
     image: grafana/grafana:latest
     container_name: paas_grafana
@@ -174,7 +212,7 @@ services:
       - GF_USERS_ALLOW_SIGN_UP=false
     restart: unless-stopped
 
-  # ── 9. NGROK ──────────────────────────────────────────────────
+  # ── 10. NGROK ─────────────────────────────────────────────────
   ngrok:
     image: ngrok/ngrok:latest
     container_name: paas_ngrok
@@ -190,8 +228,10 @@ services:
       - github-service
 
 volumes:
+  postgres-data:
   prometheus-data:
   grafana-data:
+  # auth-data, deploy-data, github-data kaldırıldı — artık PostgreSQL kullanıyor
 
 networks:
   paas-net:
