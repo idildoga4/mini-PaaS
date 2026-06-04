@@ -7,9 +7,14 @@ FAZ 7: SQLite → PostgreSQL geçişi
 - lastrowid → RETURNING id
 - datetime('now') → NOW()::text
 - upsert_project: ayrı SELECT+INSERT/UPDATE yerine tek ON CONFLICT sorgusu
+
+FAZ 8: init_db() retry mekanizması eklendi.
+- Swarm restart'larında postgres DNS geç çözülebiliyor.
+- 5 deneme × 3 saniye bekleme = maksimum 15 saniye tolerans.
 """
 
 import os
+import time
 import psycopg2
 import psycopg2.extras
 
@@ -18,39 +23,61 @@ DATABASE_URL = os.getenv(
     "postgresql://paas_user:paas_pass@postgres:5432/deploy_db"
 )
 
+_MAX_RETRIES = 5
+_RETRY_DELAY = 3  # saniye
+
 
 def init_db():
-    conn = get_connection()
-    c = conn.cursor()
+    """
+    PostgreSQL'e bağlanıp tabloları oluşturur.
+    Swarm DNS gecikmesi için retry mekanizması var.
+    """
+    last_error = None
+    for attempt in range(1, _MAX_RETRIES + 1):
+        try:
+            conn = get_connection()
+            c = conn.cursor()
 
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS projects (
-            id           SERIAL PRIMARY KEY,
-            user_email   TEXT NOT NULL,
-            project_name TEXT NOT NULL,
-            github_url   TEXT NOT NULL,
-            created_at   TEXT NOT NULL,
-            UNIQUE(user_email, project_name)
-        )
-    """)
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS projects (
+                    id           SERIAL PRIMARY KEY,
+                    user_email   TEXT NOT NULL,
+                    project_name TEXT NOT NULL,
+                    github_url   TEXT NOT NULL,
+                    created_at   TEXT NOT NULL,
+                    UNIQUE(user_email, project_name)
+                )
+            """)
 
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS deployments (
-            id             SERIAL PRIMARY KEY,
-            user_email     TEXT NOT NULL DEFAULT '',
-            project_name   TEXT NOT NULL,
-            github_url     TEXT NOT NULL,
-            status         TEXT NOT NULL,
-            port           INTEGER,
-            subdomain      TEXT,
-            container_name TEXT,
-            error_message  TEXT,
-            created_at     TEXT NOT NULL
-        )
-    """)
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS deployments (
+                    id             SERIAL PRIMARY KEY,
+                    user_email     TEXT NOT NULL DEFAULT '',
+                    project_name   TEXT NOT NULL,
+                    github_url     TEXT NOT NULL,
+                    status         TEXT NOT NULL,
+                    port           INTEGER,
+                    subdomain      TEXT,
+                    container_name TEXT,
+                    error_message  TEXT,
+                    created_at     TEXT NOT NULL
+                )
+            """)
 
-    conn.commit()
-    conn.close()
+            conn.commit()
+            conn.close()
+            print(f"[DB] PostgreSQL bağlantısı başarılı (deneme {attempt}/{_MAX_RETRIES})")
+            return
+
+        except psycopg2.OperationalError as e:
+            last_error = e
+            print(f"[DB] PostgreSQL bağlantı hatası (deneme {attempt}/{_MAX_RETRIES}): {e}")
+            if attempt < _MAX_RETRIES:
+                time.sleep(_RETRY_DELAY)
+
+    raise RuntimeError(
+        f"[DB] PostgreSQL'e {_MAX_RETRIES} denemede bağlanılamadı: {last_error}"
+    )
 
 
 def get_connection():

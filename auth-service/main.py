@@ -1,6 +1,9 @@
 # Auth Service
 # FAZ 6: StaticFiles mount kaldırıldı — dashboard artık dashboard-service tarafından serve ediliyor.
 # FAZ 7: SQLite → PostgreSQL geçişi — ? placeholder'ları %s'e, cursor pattern'e geçildi.
+# FAZ 8: circuit_breaker_state Gauge label'lı versiyona güncellendi.
+#         circuit_breaker.py (deploy/github-service) ile aynı metric adı ve label yapısı kullanılıyor.
+#         Prometheus'ta circuit_breaker_state{service="auth-service"} olarak ayrışır.
 
 import uuid
 import contextvars
@@ -46,8 +49,18 @@ bearer = HTTPBearer()
 
 # Prometheus metrikleri
 auth_verify_duration = Histogram('auth_verify_duration_seconds', 'Auth dogrulama suresi')
-circuit_state        = Gauge('circuit_breaker_state', 'Circuit breaker (0=closed, 1=open)')
-circuit_state.set(0)
+
+# FAZ 8: Label'lı Gauge — circuit_breaker.py ile aynı yapı.
+# deploy-service ve github-service'de circuit_breaker.py aynı metric adını
+# service="deploy-service" / service="github-service" label'ıyla kaydediyor.
+# Auth-service burada service="auth-service" ile kaydediyor.
+# Grafana'da tek panelde üç servisin circuit durumu görünür.
+circuit_state = Gauge(
+    'circuit_breaker_state',
+    'Circuit breaker durumu (0=CLOSED, 1=OPEN)',
+    ['service']
+)
+circuit_state.labels(service='auth-service').set(0)  # Auth-service'in circuit'i her zaman CLOSED
 
 app = FastAPI(title="Auth Service")
 

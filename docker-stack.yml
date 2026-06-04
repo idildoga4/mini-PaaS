@@ -166,6 +166,7 @@ services:
       - GITHUB_TOKEN=${GITHUB_TOKEN:-}
       - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID:-}
       - DATABASE_URL=postgresql://paas_user:paas_pass@postgres:5432/deploy_db
+      - SERVICE_NAME=deploy-service
     secrets:
       - jwt_secret
       - webhook_secret
@@ -203,6 +204,7 @@ services:
       - GITHUB_TOKEN=${GITHUB_TOKEN:-}
       - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID:-}
       - DATABASE_URL=postgresql://paas_user:paas_pass@postgres:5432/github_db
+      - SERVICE_NAME=github-service
     secrets:
       - jwt_secret
       - github_client_secret

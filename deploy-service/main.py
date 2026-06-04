@@ -42,6 +42,7 @@ logger.addHandler(handler)
 logger.setLevel(logging.INFO)
 service_logger = logging.LoggerAdapter(logger, extra={"service_name": "deploy-service"})
 from database import init_db, get_connection, upsert_project  # FAZ 4 A.1
+from circuit_breaker import circuit_state_gauge  # FAZ 8: Gauge import — Prometheus'a kayıt için
 
 AUTH_SERVICE_URL    = os.getenv("AUTH_SERVICE_URL",    "http://auth-service:8001")
 BUILDER_SERVICE_URL = os.getenv("BUILDER_SERVICE_URL", "http://builder-service:5000")

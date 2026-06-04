@@ -1,5 +1,6 @@
 # circuit_breaker.py
 # deploy-service ve github-service klasörlerine kopyala.
+# FAZ 8: circuit_state Gauge eklendi — circuit OPEN/CLOSED olunca Prometheus'a yansır.
 
 import hashlib
 import os
@@ -7,6 +8,7 @@ import httpx
 import redis as redis_lib
 
 from fastapi import HTTPException
+from prometheus_client import Gauge
 
 REDIS_URL        = os.getenv("REDIS_URL", "redis://redis:6379")
 CIRCUIT_KEY      = "circuit:auth_service"
@@ -14,6 +16,17 @@ FAIL_COUNT_KEY   = "circuit:auth_fail_count"
 TOKEN_TTL        = 60    # saniye
 CIRCUIT_OPEN_TTL = 30    # saniye
 FAIL_THRESHOLD   = 3
+
+# FAZ 8: Her servis kendi Gauge'unu tutar.
+# SERVICE_NAME deploy-service ya da github-service olarak gelir,
+# Prometheus'ta circuit_breaker_state{service="deploy-service"} şeklinde ayrışır.
+_SERVICE_NAME = os.getenv("SERVICE_NAME", "unknown-service")
+circuit_state_gauge = Gauge(
+    'circuit_breaker_state',
+    'Circuit breaker durumu (0=CLOSED, 1=OPEN)',
+    ['service']
+)
+circuit_state_gauge.labels(service=_SERVICE_NAME).set(0)  # Başlangıçta CLOSED
 
 # Modül yüklenince bir kez bağlantı kur, tekrar kullan
 _redis = None
@@ -52,8 +65,8 @@ async def verify_token_with_circuit_breaker(token: str, auth_service_url: str) -
     1. Redis cache hit → direkt dön (Auth Service'e gitme)
     2. Circuit 'open' → 503 dön
     3. Auth Service'e istek at (timeout: 3sn)
-       - Başarılı → cache'e yaz, fail sıfırla
-       - Hata → fail artır, eşik aşıldıysa circuit aç
+       - Başarılı → cache'e yaz, fail sıfırla, Gauge=0
+       - Hata → fail artır, eşik aşıldıysa circuit aç, Gauge=1
     4. Redis yoksa → Auth Service'e direkt git
     """
     r = get_redis()
@@ -78,10 +91,14 @@ async def verify_token_with_circuit_breaker(token: str, auth_service_url: str) -
         state = r.get(CIRCUIT_KEY)
         if state == "open":
             print("[circuit-breaker] Circuit OPEN → 503")
+            circuit_state_gauge.labels(service=_SERVICE_NAME).set(1)  # Gauge güncelle
             raise HTTPException(
                 status_code=503,
                 detail="Auth Service geçici olarak kullanılamıyor. Lütfen kısa süre sonra tekrar deneyin."
             )
+        else:
+            # Redis'teki state closed/yok → Gauge'u sıfırla
+            circuit_state_gauge.labels(service=_SERVICE_NAME).set(0)
     except HTTPException:
         raise
     except Exception as e:
@@ -102,6 +119,7 @@ async def verify_token_with_circuit_breaker(token: str, auth_service_url: str) -
                 r.setex(key, TOKEN_TTL, email)
                 r.delete(FAIL_COUNT_KEY)
                 r.delete(CIRCUIT_KEY)
+                circuit_state_gauge.labels(service=_SERVICE_NAME).set(0)  # CLOSED
             except Exception:
                 pass
             return email
@@ -122,6 +140,7 @@ async def verify_token_with_circuit_breaker(token: str, auth_service_url: str) -
             if count >= FAIL_THRESHOLD:
                 r.setex(CIRCUIT_KEY, CIRCUIT_OPEN_TTL, "open")
                 r.delete(FAIL_COUNT_KEY)
+                circuit_state_gauge.labels(service=_SERVICE_NAME).set(1)  # OPEN
                 print("[circuit-breaker] Circuit AÇILDI — 30sn sonra half-open")
         except Exception:
             pass

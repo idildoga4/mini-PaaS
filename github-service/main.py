@@ -19,6 +19,7 @@ from jose import JWTError, jwt           # FAZ 4 A.3 — local doğrulama
 import hashlib, hmac, httpx, os
 from secrets_helper import get_secret
 from database import init_db, get_connection
+from circuit_breaker import circuit_state_gauge  # FAZ 8: Gauge import — Prometheus'a kayıt için
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 from fastapi.responses import Response
 
