@@ -1,6 +1,6 @@
 
 .env
-data/paas_data.db
+# data/ klasoru kaldirildi (FAZ 8)
 __pycache__/
 *.pyc
 workspace/

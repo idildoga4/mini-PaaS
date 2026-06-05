@@ -128,7 +128,8 @@ services:
       - "5002:8001"
     environment:
       - AUTH_SERVICE_URL=http://auth-service:8001
-      - DATABASE_URL=postgresql://paas_user:paas_pass@postgres:5432/auth_db
+      - POSTGRES_HOST=postgres
+      - POSTGRES_DB=auth_db
     secrets:
       - jwt_secret
       - postgres_password
@@ -165,7 +166,8 @@ services:
       - REDIS_URL=redis://redis:6379
       - GITHUB_TOKEN=${GITHUB_TOKEN:-}
       - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID:-}
-      - DATABASE_URL=postgresql://paas_user:paas_pass@postgres:5432/deploy_db
+      - POSTGRES_HOST=postgres
+      - POSTGRES_DB=deploy_db
       - SERVICE_NAME=deploy-service
     secrets:
       - jwt_secret
@@ -203,7 +205,8 @@ services:
       - REDIS_URL=redis://redis:6379
       - GITHUB_TOKEN=${GITHUB_TOKEN:-}
       - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID:-}
-      - DATABASE_URL=postgresql://paas_user:paas_pass@postgres:5432/github_db
+      - POSTGRES_HOST=postgres
+      - POSTGRES_DB=github_db
       - SERVICE_NAME=github-service
     secrets:
       - jwt_secret

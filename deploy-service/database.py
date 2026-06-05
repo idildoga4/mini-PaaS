@@ -1,37 +1,43 @@
 """
 FAZ 7: SQLite → PostgreSQL geçişi
-- sqlite3 kaldırıldı, psycopg2 eklendi
-- WAL mode, _migrate(), PRAGMA'lar, check_same_thread kaldırıldı
-- AUTOINCREMENT → SERIAL
-- ? → %s placeholder
-- lastrowid → RETURNING id
-- datetime('now') → NOW()::text
-- upsert_project: ayrı SELECT+INSERT/UPDATE yerine tek ON CONFLICT sorgusu
-
 FAZ 8: init_db() retry mekanizması eklendi.
-- Swarm restart'larında postgres DNS geç çözülebiliyor.
-- 5 deneme × 3 saniye bekleme = maksimum 15 saniye tolerans.
+FAZ 8 (teknik borç): DATABASE_URL'deki şifre artık Docker Secret'tan okunuyor.
+- /run/secrets/postgres_password → Docker Swarm Secret
+- POSTGRES_PASSWORD env variable → docker-compose / local geliştirme fallback
+- Şifre artık docker-stack.yml'de düz metin olarak görünmüyor.
 """
 
 import os
 import time
 import psycopg2
 import psycopg2.extras
-
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql://paas_user:paas_pass@postgres:5432/deploy_db"
-)
+from secrets_helper import get_secret
 
 _MAX_RETRIES = 5
 _RETRY_DELAY = 3  # saniye
 
 
+def _build_database_url() -> str:
+    """
+    DATABASE_URL'i dinamik oluşturur.
+    Şifre önce Docker Secret'tan, yoksa env variable'dan okunur.
+    """
+    if os.getenv("DATABASE_URL"):
+        return os.getenv("DATABASE_URL")
+
+    host     = os.getenv("POSTGRES_HOST", "postgres")
+    port     = os.getenv("POSTGRES_PORT", "5432")
+    user     = os.getenv("POSTGRES_USER", "paas_user")
+    db       = os.getenv("POSTGRES_DB",   "deploy_db")
+    password = get_secret("postgres_password", "POSTGRES_PASSWORD")
+
+    return f"postgresql://{user}:{password}@{host}:{port}/{db}"
+
+
+DATABASE_URL = _build_database_url()
+
+
 def init_db():
-    """
-    PostgreSQL'e bağlanıp tabloları oluşturur.
-    Swarm DNS gecikmesi için retry mekanizması var.
-    """
     last_error = None
     for attempt in range(1, _MAX_RETRIES + 1):
         try:
@@ -88,11 +94,6 @@ def get_connection():
 # ── FAZ 4 A.1: upsert_project (PostgreSQL) ───────────────────────────────────
 def upsert_project(conn, user_email: str, project_name: str, github_url: str,
                    container_name: str = "") -> int:
-    """
-    Push-to-deploy akışında projects tablosuna kayıt oluşturur ya da günceller.
-    PostgreSQL ON CONFLICT ... DO UPDATE ile tek sorguda yapılıyor.
-    Dönüş: projects satırının id değeri
-    """
     c = conn.cursor()
     c.execute(
         """
