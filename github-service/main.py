@@ -108,9 +108,11 @@ async def github_callback(code: str, state: str):
         )
         token_data = res.json()
 
+    service_logger.info(f"[GitHub] GitHub OAuth yaniti: {token_data}")
     github_token = token_data.get("access_token")
     if not github_token:
-        raise HTTPException(status_code=400, detail="GitHub token alınamadı")
+        service_logger.error(f"[GitHub] Token alinamadi: {token_data}")
+        raise HTTPException(status_code=400, detail=f"GitHub token alinamadi: {token_data}")
 
     conn = get_connection()
     c = conn.cursor()
