@@ -292,8 +292,10 @@ services:
   # ── 9. PROMETHEUS ─────────────────────────────────────────────
   prometheus:
     image: prom/prometheus:latest
+    configs:
+      - source: prometheus-config
+        target: /etc/prometheus/prometheus.yml
     volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
@@ -364,7 +366,10 @@ volumes:
   prometheus-data:
   grafana-data:
   redis-data:
-  # auth-data, deploy-data, github-data kaldırıldı — artık PostgreSQL kullanıyor
+
+configs:
+  prometheus-config:
+    external: true
 
 networks:
   paas-net:

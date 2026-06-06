@@ -1,7 +1,3 @@
-# secrets_helper.py
-# Her servisin klasorune bu dosyayi kopyala.
-# main.py basina: from secrets_helper import get_secret
-
 import os
 
 def get_secret(name: str, env_fallback: str = None) -> str:

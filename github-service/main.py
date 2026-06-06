@@ -64,7 +64,7 @@ async def trace_middleware(request: Request, call_next):
     trace_id_var.reset(token)
     return response
 
-# ─── FAZ 4 A.3: Local JWT doğrulama ──────────────────────────────────────────
+# ───Local JWT doğrulama ──────────────────────────────────────────
 async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(bearer)) -> str:
     try:
         payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
@@ -108,11 +108,9 @@ async def github_callback(code: str, state: str):
         )
         token_data = res.json()
 
-    service_logger.info(f"[GitHub] GitHub OAuth yaniti: {token_data}")
     github_token = token_data.get("access_token")
     if not github_token:
-        service_logger.error(f"[GitHub] Token alinamadi: {token_data}")
-        raise HTTPException(status_code=400, detail=f"GitHub token alinamadi: {token_data}")
+        raise HTTPException(status_code=400, detail="GitHub token alınamadı")
 
     conn = get_connection()
     c = conn.cursor()
