@@ -167,11 +167,11 @@ services:
       - "5000:5000"
     networks:
       - paas-net
+    environment:
+    - GITHUB_TOKEN=
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./traefik_dynamic.yml:/etc/traefik/dynamic.yml
-    environment:
-      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
       interval: 30s

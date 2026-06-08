@@ -14,17 +14,16 @@ def on_rm_error(func, path, exc_info):
 def build_authenticated_url(repo_url: str, user_token: str = "") -> str:
     """
     Token önceliği:
-      1. Kullanıcının OAuth token'ı (GitHub ile giriş yaptıysa)
-      2. Sistem GITHUB_TOKEN (.env dosyası)
-      3. Token yoksa URL'yi olduğu gibi bırak (public repo)
+      1. Kullanıcının OAuth token'ı
+      2. Token yoksa URL'yi olduğu gibi bırak (public repo)
     """
-    token = user_token.strip() or os.environ.get("GITHUB_TOKEN", "").strip()
+    token = user_token.strip()
 
     if not token:
-        print("[git] ⚠️ Token bulunamadı — public repo olarak deneniyor")
+        print("[git] Token bulunamadı — public repo ise aynen deneniyor")
         return repo_url
 
-    print("[git] Token ile kimlik doğrulama aktif")
+    print("[git] Kullanıcı token'ı ile kimlik doğrulama aktif")
     base_url = repo_url.replace("https://", "")
     return f"https://oauth2:{token}@{base_url}"
 
@@ -61,9 +60,7 @@ def clone_repo(repo_url: str, project_name: str, user_token: str = ""):
             return project_path
         else:
             # Token'ı log'dan gizle
-            safe_err = result.stderr.replace(
-                os.environ.get("GITHUB_TOKEN", ""), "***"
-            )
+            safe_err = result.stderr
             if user_token:
                 safe_err = safe_err.replace(user_token, "***")
 

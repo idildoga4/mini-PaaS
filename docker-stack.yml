@@ -164,7 +164,6 @@ services:
       - BUILDER_SERVICE_URL=http://builder-service:5000
       - GITHUB_SERVICE_URL=http://github-service:8002
       - REDIS_URL=redis://redis:6379
-      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
       - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID:-}
       - POSTGRES_HOST=postgres
       - POSTGRES_DB=deploy_db
@@ -203,7 +202,6 @@ services:
       - AUTH_SERVICE_URL=http://auth-service:8001
       - DEPLOY_SERVICE_URL=http://deploy-service:8003
       - REDIS_URL=redis://redis:6379
-      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
       - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID:-}
       - POSTGRES_HOST=postgres
       - POSTGRES_DB=github_db
@@ -242,8 +240,6 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./traefik_dynamic.yml:/etc/traefik/dynamic.yml
-    environment:
-      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
       interval: 30s
