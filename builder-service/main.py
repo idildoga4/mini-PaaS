@@ -92,6 +92,14 @@ def wait_for_health(subdomain: str, timeout_seconds: int = 40) -> bool:
     
     return False
 
+# ─── Güvenlik (Sanitization) ──────────────────────────────────
+def sanitize_log(log_text: str) -> str:
+    """
+    Log satırındaki potansiyel gizli token'ları (örn. GitHub token) maskeler.
+    """
+    # ghp_ ile başlayan ve en az 20 karakter uzunluğundaki alfasayısal tokenları yakala
+    return re.sub(r"ghp_[a-zA-Z0-9]{20,}", "***[MASKED_GITHUB_TOKEN]***", log_text)
+
 # ─── Pipeline (Güncellendi) ───────────────────────────────────
 def run_pipeline(deploy_id: int, repo_url: str, project_name: str,
                  github_token: str = "", container_name: str = "", subdomain: str = ""):
@@ -233,7 +241,8 @@ async def websocket_endpoint(websocket: WebSocket, project_name: str):
             line = line.strip()
             if not line:
                 continue
-            await websocket.send_text(line)
+            safe_line = sanitize_log(line)
+            await websocket.send_text(safe_line)
             if "[SUCCESS!]" in line or "[error occurred]" in line.lower():
                 await asyncio.sleep(0.5)
                 break
