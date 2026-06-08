@@ -166,15 +166,23 @@ async def deploy_project(req: DeployRequest, background_tasks: BackgroundTasks):
         req.validate_repo_url()
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    
-    normalized_project = req.project_name.lower().strip()
+
+    normalized_project = req.project_name.lower().strip()  # ✅ önce tanımla
 
     if normalized_project in active_builds:
         raise HTTPException(
             status_code=409,
             detail="Build already in progress"
         )
-    
+
+    # ✅ Log dosyasını temizle (normalized_project tanımlandıktan sonra)
+    clean_name = re.sub(r'[^a-z0-9-]', '-', normalized_project).strip('-')
+    clean_name = re.sub(r'-+', '-', clean_name)
+    log_path = f"./workspace/{clean_name}.log"
+    if os.path.exists(log_path):
+        os.remove(log_path)
+        service_logger.info(f"[builder] Eski log dosyası temizlendi: {log_path}")
+
     active_builds[normalized_project] = True
     active_builds_gauge.inc()
 
@@ -195,7 +203,7 @@ async def deploy_project(req: DeployRequest, background_tasks: BackgroundTasks):
             print(f"[builder] Build lock kaldırıldı: {normalized_project}")
 
     background_tasks.add_task(pipeline_wrapper)
-    
+
     return {
         "message":        f"{req.project_name} için deployment başlatıldı",
         "deploy_id":      req.deploy_id,

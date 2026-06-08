@@ -665,13 +665,17 @@ async function redeployProject(projectName) {
     if (!r.ok) { const d = await r.json(); toast('error', d.detail || 'Redeploy başlatılamadı'); return }
     const d = await r.json()
     toast('success', '🔄 "' + projectName + '" redeploy başlatıldı')
-    await loadData()
+    
+    // ✅ Önce drawer'ı aç, WebSocket hazır olsun
     openDrawer(d.deploy_id, projectName, 'building')
     pollDeploy(d.deploy_id)
     activeFilter = projectName
     document.getElementById('proj-filter').value = projectName
     applyFilter()
     navigate('deployments')
+    
+    // ✅ loadData'yı sona bırak, render'ı bloklamasın
+    await loadData()
   } catch { toast('error', 'Bağlantı hatası') }
 }
 
