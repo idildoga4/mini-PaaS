@@ -234,7 +234,7 @@ services:
   # ── 7. BUILDER SERVICE ────────────────────────────────────────
   builder-service:
     build: ./builder-service
-    image: mini-paas/builder-image:v3
+    image: mini-paas/builder-image:latest
     ports:
       - "5000:5000"
     networks:

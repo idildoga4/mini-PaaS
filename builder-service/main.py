@@ -253,11 +253,16 @@ async def websocket_endpoint(websocket: WebSocket, project_name: str):
 async def cleanup(data: dict):
     container_name = data.get("container_name", "")
     image_name     = data.get("image_name", "")
+    
     if container_name:
         subprocess.run(["docker", "rm", "-f", container_name], capture_output=True)
     if image_name:
         subprocess.run(["docker", "rmi", "-f", image_name], capture_output=True)
-    service_logger.info(f"[cleanup] {container_name} ve {image_name} silindi")
+    
+    subprocess.run(["docker", "image", "prune", "-a", "-f"], capture_output=True)
+    subprocess.run(["docker", "builder", "prune", "-a", "-f"], capture_output=True)
+    
+    service_logger.info(f"[cleanup] {container_name} silindi ve sistem çöpleri TAMAMEN temizlendi 🧹")
     return {"message": "Temizlendi"}
 
 @app.post("/stop")
