@@ -307,6 +307,14 @@ def start_deployment(conn, email: str, project_name: str, github_url: str,
 @app.post("/api/projects")
 async def create_project(req: ProjectRequest, bg: BackgroundTasks,
                          email: str = Depends(verify_token)):
+    
+    # --- DÜZELTME 1: İŞLEM YAPMADAN ÖNCE GITHUB KONTROLÜ ---
+    github_token = await get_github_token(email)
+    if not github_token:
+        # Eğer token yoksa, veritabanını hiç yormadan işlemi reddet!
+        raise HTTPException(status_code=403, detail="Lütfen proje oluşturmadan önce GitHub hesabınızı bağlayın.")
+    # -------------------------------------------------------
+
     conn = get_connection()
     c = conn.cursor()
     c.execute(
@@ -328,7 +336,6 @@ async def create_project(req: ProjectRequest, bg: BackgroundTasks,
     deploy_id = start_deployment(conn, email, req.project_name, req.github_url, container_name)
     conn.close()
 
-    github_token = await get_github_token(email)
     bg.add_task(trigger_builder, deploy_id, req.github_url, req.project_name,
                 github_token, container_name, subdomain)
     return {"deploy_id": deploy_id, "message": "Proje oluşturuldu, deployment başlatıldı"}
@@ -345,6 +352,13 @@ async def list_projects(email: str = Depends(verify_token)):
 @app.post("/api/projects/{project_name}/redeploy")
 async def redeploy(project_name: str, bg: BackgroundTasks,
                    email: str = Depends(verify_token)):
+                   
+    # --- DÜZELTME 2: REDEPLOY ÖNCESİ GITHUB KONTROLÜ ---
+    github_token = await get_github_token(email)
+    if not github_token:
+        raise HTTPException(status_code=403, detail="Redeploy işlemi için GitHub hesabınızın bağlı olması gereklidir.")
+    # ---------------------------------------------------
+
     conn = get_connection()
     c = conn.cursor()
     c.execute(
@@ -363,7 +377,6 @@ async def redeploy(project_name: str, bg: BackgroundTasks,
                                  container_name)
     conn.close()
 
-    github_token = await get_github_token(email)
     bg.add_task(trigger_builder, deploy_id, proj["github_url"], proj["project_name"],
                 github_token, container_name, subdomain)
     return {"deploy_id": deploy_id, "message": "Redeploy başlatıldı"}
