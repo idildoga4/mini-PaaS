@@ -32,6 +32,11 @@ http:
       - web
       rule: Host(`idildoga4-minipaastest.localhost`)
       service: idildoga4-minipaastest
+    omertank36-publicapp:
+      entryPoints:
+      - web
+      rule: Host(`omertank36-publicapp.localhost`)
+      service: omertank36-publicapp
     omertank36-test1:
       entryPoints:
       - web
@@ -42,6 +47,11 @@ http:
       - web
       rule: Host(`omertank36-testapp.localhost`)
       service: omertank36-testapp
+    omertank36-testapppublic:
+      entryPoints:
+      - web
+      rule: Host(`omertank36-testapppublic.localhost`)
+      service: omertank36-testapppublic
     omertank37-testapp:
       entryPoints:
       - web
@@ -78,6 +88,10 @@ http:
       loadBalancer:
         servers:
         - url: http://idildoga4_minipaastest:80
+    omertank36-publicapp:
+      loadBalancer:
+        servers:
+        - url: http://omertank36_publicapp:80
     omertank36-test1:
       loadBalancer:
         servers:
@@ -86,6 +100,10 @@ http:
       loadBalancer:
         servers:
         - url: http://omertank36_testapp:80
+    omertank36-testapppublic:
+      loadBalancer:
+        servers:
+        - url: http://omertank36_testapppublic:80
     omertank37-testapp:
       loadBalancer:
         servers:
