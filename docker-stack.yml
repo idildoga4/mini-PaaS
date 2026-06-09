@@ -107,6 +107,8 @@ services:
     image: mini-paas/dashboard-service:latest
     networks:
       - paas-net
+    environment:
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID:-}  
     deploy:
       replicas: 1
       restart_policy:
