@@ -574,26 +574,46 @@ let _autoRefresh = null
 const PAGES = ['home','auth','projects','deployments','logs','settings']
 
 // ── Init ──────────────────────────────────────────────────
+// ── Init ──────────────────────────────────────────────────
+// ── Init ──────────────────────────────────────────────────
+// ── Init ──────────────────────────────────────────────────
 window.onload = async () => {
   const params = new URLSearchParams(window.location.search)
   if (params.get('github') === 'connected') {
     window.history.replaceState({}, '', '/')
     setTimeout(() => { toast('success', '✓ GitHub hesabınız bağlandı'); checkGithubStatus() }, 400)
   }
+
   if (token) {
+    // 1. KULLANICIYI ANINDA İÇERİ AL
+    setUser(localStorage.getItem('paas_email') || 'Kullanıcı')
+    showPage('projects')
+    
+    // 2. 🚀 VERİLERİ BEKLEMEDEN (AWAIT OLMADAN) ANINDA ÇEK
+    // Bu sayede Auth servisinin yanıt vermesini beklemeden projeler ekrana düşer.
+    loadData()
+
+    // 3. ARKA PLANDA SESSİZCE AUTH KONTROLÜ YAP
     try {
       const r = await af('http://localhost:8090/api/me')
       if (r.ok) {
         const d = await r.json()
-        setUser(d.email)
-        await loadData()
-        showPage('projects')
+        setUser(d.email) // Email'i sunucudan gelen gerçek veriyle güncelle
         return
       }
-    } catch {}
-    clearToken()
+      
+      if (r.status === 401 || r.status === 403) {
+        clearToken()
+        showPage('home')
+      } else {
+        toast('error', '⚠️ Auth servisi çevrimdışı. Arayüz bağımsız çalışıyor.')
+      }
+    } catch (e) {
+      toast('error', '⚠️ Auth servisi çevrimdışı. Arayüz bağımsız çalışıyor.')
+    }
+  } else {
+    showPage('home')
   }
-  showPage('home')
 }
 
 // ── Pages ─────────────────────────────────────────────────
