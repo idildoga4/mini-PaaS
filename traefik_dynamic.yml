@@ -32,6 +32,26 @@ http:
       - web
       rule: Host(`idildoga4-minipaastest.localhost`)
       service: idildoga4-minipaastest
+    lolcutuana28-minipaastest:
+      entryPoints:
+      - web
+      rule: Host(`lolcutuana28-minipaastest.localhost`)
+      service: lolcutuana28-minipaastest
+    lolcutuana28-minipaastestb:
+      entryPoints:
+      - web
+      rule: Host(`lolcutuana28-minipaastestb.localhost`)
+      service: lolcutuana28-minipaastestb
+    lolcutuana28-minipaastestben:
+      entryPoints:
+      - web
+      rule: Host(`lolcutuana28-minipaastestben.localhost`)
+      service: lolcutuana28-minipaastestben
+    lolcutuana28-minipaastestbenim:
+      entryPoints:
+      - web
+      rule: Host(`lolcutuana28-minipaastestbenim.localhost`)
+      service: lolcutuana28-minipaastestbenim
     omertank36-publicapp:
       entryPoints:
       - web
@@ -88,6 +108,22 @@ http:
       loadBalancer:
         servers:
         - url: http://idildoga4_minipaastest:80
+    lolcutuana28-minipaastest:
+      loadBalancer:
+        servers:
+        - url: http://lolcutuana28_minipaastest:80
+    lolcutuana28-minipaastestb:
+      loadBalancer:
+        servers:
+        - url: http://lolcutuana28_minipaastestb:80
+    lolcutuana28-minipaastestben:
+      loadBalancer:
+        servers:
+        - url: http://lolcutuana28_minipaastestben:80
+    lolcutuana28-minipaastestbenim:
+      loadBalancer:
+        servers:
+        - url: http://lolcutuana28_minipaastestbenim:80
     omertank36-publicapp:
       loadBalancer:
         servers:

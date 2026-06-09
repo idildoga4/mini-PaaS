@@ -46,6 +46,14 @@ GITHUB_CLIENT_ID     = os.getenv("GITHUB_CLIENT_ID")
 GITHUB_CLIENT_SECRET = get_secret("github_client_secret",  "GITHUB_CLIENT_SECRET")
 WEBHOOK_SECRET       = get_secret("webhook_secret",        "WEBHOOK_SECRET")
 DEPLOY_SERVICE_URL   = os.getenv("DEPLOY_SERVICE_URL", "http://deploy-service:8003")
+FRONTEND_URL         = os.getenv("FRONTEND_URL", "http://localhost:8090")
+NGROK_DOMAIN         = os.getenv("NGROK_DOMAIN", "")
+
+# OAuth callback URL'si: ngrok varsa ngrok üzerinden, yoksa frontend URL'den
+def _get_callback_url() -> str:
+    if NGROK_DOMAIN:
+        return f"https://{NGROK_DOMAIN}/api/github/callback"
+    return f"{FRONTEND_URL}/api/github/callback"
 
 bearer = HTTPBearer()
 app = FastAPI(title="GitHub Service")
@@ -87,6 +95,7 @@ async def github_login(email: str = Depends(verify_token)):
         f"?client_id={GITHUB_CLIENT_ID}"
         f"&scope=repo"
         f"&state={state}"
+        f"&redirect_uri={_get_callback_url()}"
     )
     return {"redirect_url": url}
 
@@ -110,7 +119,12 @@ async def github_callback(code: str, state: str):
 
     github_token = token_data.get("access_token")
     if not github_token:
-        raise HTTPException(status_code=400, detail="GitHub token alınamadı")
+        error_code = token_data.get("error", "bilinmiyor")
+        error_desc = token_data.get("error_description", "açıklama yok")
+        service_logger.error(
+            f"[GitHub Service] Token alınamadı | hata: {error_code} | açıklama: {error_desc} | tam yanıt: {token_data}"
+        )
+        raise HTTPException(status_code=400, detail=f"GitHub token alınamadı: {error_desc}")
 
     conn = get_connection()
     c = conn.cursor()
@@ -127,7 +141,7 @@ async def github_callback(code: str, state: str):
     conn.commit()
     conn.close()
     service_logger.info(f"[GitHub Service] OAuth bağlandı → {email}")
-    return RedirectResponse(url="http://localhost:8090/?github=connected")
+    return RedirectResponse(url=f"{FRONTEND_URL}/?github=connected")
 
 @app.get("/api/github/status")
 async def github_status(email: str = Depends(verify_token)):
@@ -148,9 +162,14 @@ async def github_disconnect(email: str = Depends(verify_token)):
     service_logger.info(f"[GitHub Service] GitHub bağlantısı kesildi → {email}")
     return {"message": "GitHub bağlantısı kesildi"}
 
+INTERNAL_API_KEY = get_secret("internal_api_key", "INTERNAL_API_KEY")
+
 @app.get("/api/github/token")
-async def get_github_token(email: str):
+async def get_github_token(email: str, request: Request):
     """Deploy Service'in kullanıcı token'ını sorgulaması için internal endpoint."""
+    api_key = request.headers.get("X-Internal-Key", "")
+    if not api_key or api_key != INTERNAL_API_KEY:
+        raise HTTPException(status_code=403, detail="Yetkisiz erişim")
     conn = get_connection()
     c = conn.cursor()
     c.execute("SELECT github_token FROM github_tokens WHERE email=%s", (email,))

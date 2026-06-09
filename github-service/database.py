@@ -59,7 +59,8 @@ def init_db():
                     repo_name    TEXT NOT NULL,
                     user_email   TEXT NOT NULL,
                     project_name TEXT NOT NULL,
-                    updated_at   TEXT NOT NULL
+                    updated_at   TEXT NOT NULL,
+                    UNIQUE (repo_name, user_email)
                 )
             """)
 

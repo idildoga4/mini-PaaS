@@ -113,12 +113,16 @@ services:
       - BUILDER_SERVICE_URL=http://builder-service:5000
       - GITHUB_SERVICE_URL=http://github-service:8002
       - DATABASE_URL=postgresql://paas_user:${POSTGRES_PASSWORD:-paas_pass}@postgres:5432/deploy_db
+      - REDIS_URL=redis://redis:6379
+      - SERVICE_NAME=deploy-service
     depends_on:
       postgres:
         condition: service_healthy
       auth-service:
         condition: service_started
       builder-service:
+        condition: service_started
+      redis:
         condition: service_started
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8003/health')"]
@@ -142,12 +146,16 @@ services:
       - AUTH_SERVICE_URL=http://auth-service:8001
       - DEPLOY_SERVICE_URL=http://deploy-service:8003
       - DATABASE_URL=postgresql://paas_user:${POSTGRES_PASSWORD:-paas_pass}@postgres:5432/github_db
+      - REDIS_URL=redis://redis:6379
+      - SERVICE_NAME=github-service
     depends_on:
       postgres:
         condition: service_healthy
       auth-service:
         condition: service_started
       deploy-service:
+        condition: service_started
+      redis:
         condition: service_started
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')"]
@@ -181,6 +189,13 @@ services:
     restart: unless-stopped
 
   # ── 8. PROMETHEUS ─────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: paas_redis
+    networks:
+      - paas-net
+    restart: unless-stopped
+
   prometheus:
     image: prom/prometheus:latest
     container_name: paas_monitor

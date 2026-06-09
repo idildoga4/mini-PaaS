@@ -208,6 +208,8 @@ services:
       - POSTGRES_HOST=postgres
       - POSTGRES_DB=github_db
       - SERVICE_NAME=github-service
+      - NGROK_DOMAIN=${NGROK_DOMAIN:-}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:8090}
     secrets:
       - jwt_secret
       - github_client_secret
