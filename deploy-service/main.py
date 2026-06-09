@@ -195,12 +195,15 @@ def compute_subdomain(user_email: str, project_name: str) -> str:
     return f"{email_prefix}-{clean_project}"
 
 # ─── GitHub token al ──────────────────────────────────────────
+INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", "")
+
 async def get_github_token(email: str) -> str:
     try:
         async with httpx.AsyncClient() as client:
             r = await client.get(
                 f"{GITHUB_SERVICE_URL}/api/github/token",
                 params={"email": email},
+                headers={"X-Internal-Key": INTERNAL_API_KEY},
                 timeout=5
             )
             if r.status_code == 200:

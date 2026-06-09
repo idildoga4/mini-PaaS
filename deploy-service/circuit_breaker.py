@@ -130,7 +130,6 @@ async def verify_token_with_circuit_breaker(token: str, auth_service_url: str) -
     except HTTPException:
         raise
     except Exception as e:
-        # Network hatası veya timeout → fail sayacını artır
         print(f"[circuit-breaker] Auth Service hatası: {e}")
         try:
             count = r.incr(FAIL_COUNT_KEY)
