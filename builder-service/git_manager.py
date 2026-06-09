@@ -2,7 +2,6 @@ import subprocess
 import os
 import shutil
 import stat
-import re
 
 
 def on_rm_error(func, path, exc_info):
@@ -66,10 +65,20 @@ def clone_repo(repo_url: str, project_name: str, user_token: str = ""):
 
             print(f"[git] ❌ Clone hatası:\n{safe_err}")
 
+            # --- PRIVATE REPO / YETKİ KONTROLÜ UX İYİLEŞTİRMESİ ---
+            ux_warning = ""
+            err_lower = safe_err.lower()
+            if not user_token and ("not found" in err_lower or "authentication" in err_lower or "could not read username" in err_lower):
+                ux_warning = "\n[!] UYARI: Repo bulunamadı veya erişim reddedildi. Eğer bu bir Private (Gizli) Repo ise, deployment yapabilmek için uygulamanıza GitHub hesabınızı bağlamanız gerekmektedir.\n"
+                print(ux_warning.strip())
+            # ------------------------------------------------------
+
             # Hata mesajını log dosyasına yaz (dashboard drawer'da görünsün)
             with open(log_path, "w", encoding="utf-8") as f:
                 f.write(f"[git] ❌ Repo klonlanamadı:\n")
                 f.write(safe_err + "\n")
+                if ux_warning:
+                    f.write(ux_warning + "\n")
                 f.write("[error occurred]\n")
 
             return None

@@ -313,9 +313,7 @@ async def create_project(req: ProjectRequest, bg: BackgroundTasks,
     
     # --- DÜZELTME 1: İŞLEM YAPMADAN ÖNCE GITHUB KONTROLÜ ---
     github_token = await get_github_token(email)
-    if not github_token:
-        # Eğer token yoksa, veritabanını hiç yormadan işlemi reddet!
-        raise HTTPException(status_code=403, detail="Lütfen proje oluşturmadan önce GitHub hesabınızı bağlayın.")
+    
     # -------------------------------------------------------
 
     conn = get_connection()
@@ -357,9 +355,11 @@ async def redeploy(project_name: str, bg: BackgroundTasks,
                    email: str = Depends(verify_token)):
                    
     # --- DÜZELTME 2: REDEPLOY ÖNCESİ GITHUB KONTROLÜ ---
-    github_token = await get_github_token(email)
-    if not github_token:
-        raise HTTPException(status_code=403, detail="Redeploy işlemi için GitHub hesabınızın bağlı olması gereklidir.")
+    # Eğer giriş yapmış bir kullanıcı varsa token'ı çek, 
+    # yoksa (veya public ise) boş string dönsün ki hata vermesin!
+    github_token = ""
+    if email:
+        github_token = await get_github_token(email)
     # ---------------------------------------------------
 
     conn = get_connection()

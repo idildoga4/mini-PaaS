@@ -84,31 +84,3 @@ def get_connection():
     database_url = _build_database_url()
     conn = psycopg2.connect(database_url, cursor_factory=psycopg2.extras.RealDictCursor)
     return conn
-
-def upsert_project(repo_name: str, user_email: str, project_name: str):
-    """
-    Kullanıcının repo eşleşmesini veritabanına kaydeder.
-    Eğer repo_name ve user_email zaten varsa, projeyi günceller (PostgreSQL ON CONFLICT).
-    """
-    conn = get_connection()
-    try:
-        c = conn.cursor()
-        current_time = str(time.time())
-        
-        c.execute("""
-            INSERT INTO repo_mappings (repo_name, user_email, project_name, updated_at)
-            VALUES (%s, %s, %s, %s)
-            ON CONFLICT (repo_name, user_email) 
-            DO UPDATE SET 
-                project_name = EXCLUDED.project_name,
-                updated_at = EXCLUDED.updated_at
-        """, (repo_name, user_email, project_name, current_time))
-        
-        conn.commit()
-        print(f"[DB] Upsert basarili: {repo_name} -> {project_name}")
-    except Exception as e:
-        conn.rollback()
-        print(f"[DB] Upsert hatasi: {e}")
-        raise e
-    finally:
-        conn.close()
