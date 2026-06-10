@@ -194,6 +194,25 @@ def compute_subdomain(user_email: str, project_name: str) -> str:
     clean_project = re.sub(r"-+", "-", clean_project)
     return f"{email_prefix}-{clean_project}"
 
+# ─── Repo public mu private mı kontrol et ─────────────────────
+async def is_repo_private(github_url: str) -> bool:
+    """GitHub URL'sine token'sız istek atarak repo'nun private olup olmadığını kontrol eder."""
+    try:
+        match = re.search(r"github\.com[:/](.+?)(?:\.git)?$", github_url.strip())
+        if not match:
+            return True  # URL parse edilemezse güvenli tarafta kal, token iste
+        repo_path = match.group(1).rstrip("/")
+        api_url = f"https://api.github.com/repos/{repo_path}"
+        async with httpx.AsyncClient(timeout=5) as client:
+            r = await client.get(api_url, headers={"Accept": "application/vnd.github+json"})
+        if r.status_code == 200:
+            return r.json().get("private", False)
+        elif r.status_code == 404:
+            return True   # 404 → private veya yok, token gerekebilir
+        return True
+    except Exception:
+        return True  # Bağlantı hatası → güvenli tarafta kal
+
 # ─── GitHub token al ──────────────────────────────────────────
 INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", "")
 
@@ -291,7 +310,6 @@ def start_deployment(conn, email: str, project_name: str, github_url: str,
         """,
         (email, project_name)
     )
-    # RETURNING id — SQLite'taki lastrowid'nin PostgreSQL karşılığı
     c.execute(
         """
         INSERT INTO deployments
@@ -310,11 +328,16 @@ def start_deployment(conn, email: str, project_name: str, github_url: str,
 @app.post("/api/projects")
 async def create_project(req: ProjectRequest, bg: BackgroundTasks,
                          email: str = Depends(verify_token)):
-    
-    # --- DÜZELTME 1: İŞLEM YAPMADAN ÖNCE GITHUB KONTROLÜ ---
+
+    # GitHub token kontrolü — private repo ise zorunlu, public ise opsiyonel
     github_token = await get_github_token(email)
-    
-    # -------------------------------------------------------
+    if not github_token:
+        repo_is_private = await is_repo_private(req.github_url)
+        if repo_is_private:
+            raise HTTPException(
+                status_code=403,
+                detail="Bu repo private görünüyor. Lütfen önce GitHub hesabınızı bağlayın."
+            )
 
     conn = get_connection()
     c = conn.cursor()
@@ -353,15 +376,8 @@ async def list_projects(email: str = Depends(verify_token)):
 @app.post("/api/projects/{project_name}/redeploy")
 async def redeploy(project_name: str, bg: BackgroundTasks,
                    email: str = Depends(verify_token)):
-                   
-    # --- DÜZELTME 2: REDEPLOY ÖNCESİ GITHUB KONTROLÜ ---
-    # Eğer giriş yapmış bir kullanıcı varsa token'ı çek, 
-    # yoksa (veya public ise) boş string dönsün ki hata vermesin!
-    github_token = ""
-    if email:
-        github_token = await get_github_token(email)
-    # ---------------------------------------------------
 
+    # Önce projeyi bul
     conn = get_connection()
     c = conn.cursor()
     c.execute(
@@ -372,6 +388,17 @@ async def redeploy(project_name: str, bg: BackgroundTasks,
     if not proj:
         conn.close()
         raise HTTPException(status_code=404, detail="Proje bulunamadı")
+
+    # GitHub token kontrolü — private repo ise zorunlu, public ise opsiyonel
+    github_token = await get_github_token(email)
+    if not github_token:
+        repo_is_private = await is_repo_private(proj["github_url"])
+        if repo_is_private:
+            conn.close()
+            raise HTTPException(
+                status_code=403,
+                detail="Bu repo private görünüyor. Lütfen önce GitHub hesabınızı bağlayın."
+            )
 
     container_name = compute_container_name(email, proj["project_name"])
     subdomain      = compute_subdomain(email, proj["project_name"])
