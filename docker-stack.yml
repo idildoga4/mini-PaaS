@@ -170,6 +170,7 @@ services:
       - POSTGRES_HOST=postgres
       - POSTGRES_DB=deploy_db
       - SERVICE_NAME=deploy-service
+      - INTERNAL_API_KEY=benim_gizli_anahtarim_123
     secrets:
       - jwt_secret
       - webhook_secret
@@ -210,10 +211,12 @@ services:
       - SERVICE_NAME=github-service
       - NGROK_DOMAIN=${NGROK_DOMAIN:-}
       - FRONTEND_URL=${FRONTEND_URL:-http://localhost:8090}
+      - INTERNAL_API_KEY=benim_gizli_anahtarim_123
+      - WEBHOOK_SECRET=github_gizli_muhur_123
     secrets:
       - jwt_secret
       - github_client_secret
-      - webhook_secret
+      #- webhook_secret
       - postgres_password
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')"]
@@ -237,6 +240,8 @@ services:
   builder-service:
     build: ./builder-service
     image: mini-paas/builder-image:latest
+    environment:
+      - INTERNAL_API_KEY=benim_gizli_anahtarim_123
     ports:
       - "5000:5000"
     networks:

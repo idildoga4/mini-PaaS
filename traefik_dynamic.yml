@@ -67,6 +67,11 @@ http:
       - web
       rule: Host(`omertank36-testapp.localhost`)
       service: omertank36-testapp
+    omertank36-testappprivate:
+      entryPoints:
+      - web
+      rule: Host(`omertank36-testappprivate.localhost`)
+      service: omertank36-testappprivate
     omertank36-testapppublic:
       entryPoints:
       - web
@@ -136,6 +141,10 @@ http:
       loadBalancer:
         servers:
         - url: http://omertank36_testapp:80
+    omertank36-testappprivate:
+      loadBalancer:
+        servers:
+        - url: http://omertank36_testappprivate:80
     omertank36-testapppublic:
       loadBalancer:
         servers:
